@@ -263,35 +263,7 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
     for date_idx, today in enumerate(all_dates):
         # 1. 리밸런싱 데이인 경우 리밸런싱 수행
         if today in rebalance_dates:
-            # 기존 포트폴리오 전량 매도
-            if portfolio:
-                sell_log = []
-                for code, info in list(portfolio.items()):
-                    # 오늘 종가 확인
-                    if today in prices[code]:
-                        today_close = prices[code][today]
-                    else:
-                        # 오늘 가격이 없으면 직전 가치 유지
-                        today_close = info["buy_price"]
-                        
-                    sell_value = info["shares"] * today_close
-                    # 수수료 및 거래세 적용 (매도 시 0.2% 가정)
-                    sell_value_after_tax = sell_value * 0.998
-                    cash += sell_value_after_tax
-                    
-                    sell_log.append({
-                        "date": today,
-                        "type": "SELL",
-                        "code": code,
-                        "name": data["listing"][data["listing"]['code'] == code]['name'].values[0],
-                        "shares": info["shares"],
-                        "price": today_close,
-                        "value": sell_value_after_tax
-                    })
-                trade_logs.extend(sell_log)
-                portfolio.clear()
-                
-            # 신규 종목 스크리닝
+            # 신규 종목 스크리닝을 먼저 시도하여 살 수 있는 우량 저평가주가 있는지 파악합니다.
             df_screened = screen_stocks(
                 today, data, 
                 psr_threshold=psr_threshold, 
@@ -301,7 +273,37 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                 max_marcap=max_marcap
             )
             
+            # 조건 만족하는 신규 종목이 1개라도 존재하는 경우에만 포트폴리오 리밸런싱(교체)을 진행합니다.
+            # 만약 조건에 맞는 종목이 0개라면 기존 포트폴리오를 매도하지 않고 그대로 유지(Hold)합니다.
             if not df_screened.empty:
+                # 기존 포트폴리오 전량 매도
+                if portfolio:
+                    sell_log = []
+                    for code, info in list(portfolio.items()):
+                        # 오늘 종가 확인
+                        if today in prices[code]:
+                            today_close = prices[code][today]
+                        else:
+                            # 오늘 가격이 없으면 직전 가치 유지
+                            today_close = info["buy_price"]
+                            
+                        sell_value = info["shares"] * today_close
+                        # 수수료 및 거래세 적용 (매도 시 0.2% 가정)
+                        sell_value_after_tax = sell_value * 0.998
+                        cash += sell_value_after_tax
+                        
+                        sell_log.append({
+                            "date": today,
+                            "type": "SELL",
+                            "code": code,
+                            "name": data["listing"][data["listing"]['code'] == code]['name'].values[0],
+                            "shares": info["shares"],
+                            "price": today_close,
+                            "value": sell_value_after_tax
+                        })
+                    trade_logs.extend(sell_log)
+                    portfolio.clear()
+                
                 # 지정 정렬 기준에 맞춰 상위 K개 선택
                 if sort_by == "psr":
                     df_selected = df_screened.sort_values(by="psr").head(portfolio_size)
@@ -444,3 +446,43 @@ if __name__ == "__main__":
                 print(f"  {k}: {v}")
     else:
         print("No cache data found. Please run data_collector.py first.")
+
+def get_available_backtest_range(data):
+    """
+    캐시된 재무 데이터를 분석하여 백테스트가 가능한 안전한 최초 시작일과 최신 종료일을 구합니다.
+    """
+    financials = data.get("financials", {})
+    if not financials:
+        return None, None
+        
+    all_quarters = set()
+    for code, fin in financials.items():
+        dates = fin.get("dates", [])
+        for d in dates:
+            if d and not d.endswith("(E)") and "." in d:
+                all_quarters.add(d)
+                
+    valid_qs = sorted(list(all_quarters))
+    if not valid_qs:
+        return None, None
+        
+    # 가용한 가장 과거 분기를 기준으로 공시일 산정
+    first_q = valid_qs[0]
+    year_str, q_str = first_q.split('.')
+    year = int(year_str)
+    q = int(q_str)
+    
+    # 1분기(3): 5/15 공시, 2분기(6): 8/15 공시, 3분기(9): 11/15 공시, 4분기(12): 익년 3/31 공시
+    if q == 3:
+        safe_start_date = datetime(year, 5, 16)
+    elif q == 6:
+        safe_start_date = datetime(year, 8, 16)
+    elif q == 9:
+        safe_start_date = datetime(year, 11, 16)
+    else:
+        safe_start_date = datetime(year + 1, 4, 1)
+        
+    index_dates = data["index"].index
+    latest_date = index_dates[-1].to_pydatetime()
+    
+    return safe_start_date, latest_date

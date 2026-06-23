@@ -152,11 +152,28 @@ initial_capital = st.sidebar.number_input(
 )
 
 # Default Backtest Dates (within 2 years roughly)
-default_start = datetime(2024, 5, 31)
-default_end = datetime(2026, 6, 23)
+if cached_data is not None:
+    safe_start, latest_end = backtester.get_available_backtest_range(cached_data)
+    if safe_start is None:
+        safe_start = datetime(2024, 5, 31)
+        latest_end = datetime(2026, 6, 23)
+else:
+    safe_start = datetime(2024, 5, 31)
+    latest_end = datetime(2026, 6, 23)
 
-start_date = st.sidebar.date_input("백테스트 시작일", default_start)
-end_date = st.sidebar.date_input("백테스트 종료일", default_end)
+start_date = st.sidebar.date_input(
+    "백테스트 시작일", 
+    value=max(safe_start, datetime(2024, 5, 31)),
+    min_value=safe_start,
+    max_value=latest_end,
+    help=f"로컬 재무 데이터 기준 가용 범위 하한선은 {safe_start.strftime('%Y-%m-%d')}입니다. 이보다 이전 날짜에는 데이터가 없어 시뮬레이션이 불가능합니다."
+)
+end_date = st.sidebar.date_input(
+    "백테스트 종료일", 
+    value=latest_end,
+    min_value=safe_start,
+    max_value=latest_end
+)
 
 # Validation check for dates
 if start_date >= end_date:
