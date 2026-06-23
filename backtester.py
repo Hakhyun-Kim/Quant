@@ -56,10 +56,11 @@ def get_previous_quarters(quarter_str, n=3):
     return list(reversed(quarters))
 
 def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, consecutive_profitable_quarters=3,
-                  min_marcap=0, max_marcap=float('inf')):
+                  min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0):
     """
     특정 날짜 기준으로 조건에 맞는 종목들을 필터링합니다.
     - min_marcap, max_marcap: 원 단위 시가총액 필터 범위
+    - min_div_yield: 최소 배당수익률 (%)
     """
     listing = data["listing"]
     financials = data["financials"]
@@ -172,6 +173,32 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
         if not (min_marcap <= market_cap <= max_marcap):
             continue
             
+        # 배당수익률 추출: 결산(연간) 기준 가장 최근 배당수익률(dividend_yield)을 매칭합니다.
+        div_yield = 0.0
+        if "dividend_yield" in fin_data:
+            recent_year = recent_q.split('.')[0]
+            annual_q = f"{recent_year}.12"
+            
+            try:
+                aq_idx = dates.index(annual_q)
+                div_val = fin_data["dividend_yield"][aq_idx]
+                if div_val is not None:
+                    div_yield = div_val
+            except (ValueError, IndexError):
+                # 전년도 결산 데이터 사용 시도
+                prev_annual_q = f"{int(recent_year)-1}.12"
+                try:
+                    paq_idx = dates.index(prev_annual_q)
+                    div_val = fin_data["dividend_yield"][paq_idx]
+                    if div_val is not None:
+                        div_yield = div_val
+                except (ValueError, IndexError):
+                    pass
+                    
+        # 최소 배당수익률 필터링
+        if div_yield < min_div_yield:
+            continue
+            
         # PSR = 시가총액 / (매출액 * 1억 - 네이버 재무제표 단위는 대개 억 원이므로 보정)
         # 네이버 금융의 매출액 표는 기본이 억 원 단위입니다.
         # 시가총액(원) / (매출액(억원) * 10^8)
@@ -186,19 +213,21 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
                 "marcap": market_cap,
                 "revenue_ttm": ttm_revenue,
                 "psr": psr,
-                "debt_ratio": debt
+                "debt_ratio": debt,
+                "div_yield": div_yield
             })
             
     return pd.DataFrame(screened_results)
 
 def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_threshold=100.0, 
                  consecutive_profitable_quarters=3, portfolio_size=10, rebalance_freq="Q", initial_capital=100000000,
-                 min_marcap=0, max_marcap=float('inf'), sort_by="psr"):
+                 min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0, sort_by="psr"):
     """
     퀀트 투자 전략 백테스트를 수행합니다.
     - rebalance_freq: "Q" (분기별), "M" (월별), "H" (반기별), "Y" (연별)
     - min_marcap, max_marcap: 원 단위 시가총액 필터 범위
-    - sort_by: "psr" (PSR 오름차순), "marcap_asc" (시총 오름차순), "marcap_desc" (시총 내림차순)
+    - min_div_yield: 최소 배당수익률 (%)
+    - sort_by: "psr" (PSR 오름차순), "marcap_asc" (시총 오름차순), "marcap_desc" (시총 내림차순), "div_desc" (배당률 내림차순)
     """
     prices = data["prices"]
     df_index = data["index"]
@@ -270,7 +299,8 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                 debt_threshold=debt_threshold,
                 consecutive_profitable_quarters=consecutive_profitable_quarters,
                 min_marcap=min_marcap,
-                max_marcap=max_marcap
+                max_marcap=max_marcap,
+                min_div_yield=min_div_yield
             )
             
             # 조건 만족하는 신규 종목이 1개라도 존재하는 경우에만 포트폴리오 리밸런싱(교체)을 진행합니다.
@@ -311,6 +341,8 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                     df_selected = df_screened.sort_values(by="marcap").head(portfolio_size)
                 elif sort_by == "marcap_desc":
                     df_selected = df_screened.sort_values(by="marcap", ascending=False).head(portfolio_size)
+                elif sort_by == "div_desc":
+                    df_selected = df_screened.sort_values(by="div_yield", ascending=False).head(portfolio_size)
                 else:
                     df_selected = df_screened.sort_values(by="psr").head(portfolio_size)
                     

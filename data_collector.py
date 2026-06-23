@@ -71,6 +71,8 @@ def crawl_financial_data(code):
                 key = "operating_profit"
             elif "부채비율" in row_name:
                 key = "debt_ratio"
+            elif "시가배당률" in row_name:
+                key = "dividend_yield"
                 
             if not key:
                 continue

@@ -109,7 +109,7 @@ consecutive_profitable_quarters = st.sidebar.number_input(
 st.sidebar.subheader("🏢 기업 규모(시가총액) 필터")
 min_marcap_input = st.sidebar.number_input(
     "최소 시가총액 (억원)",
-    min_value=0, value=0, step=50,
+    min_value=0, value=500, step=50,
     help="설정한 금액 미만의 시가총액을 가진 초소형 기업을 제외합니다."
 )
 max_marcap_input = st.sidebar.number_input(
@@ -121,7 +121,15 @@ max_marcap_input = st.sidebar.number_input(
 min_marcap_won = min_marcap_input * 100000000
 max_marcap_won = max_marcap_input * 100000000 if max_marcap_input > 0 else float('inf')
 
-# 3. Backtest Settings
+# 3. Dividend Filter (배당수익률 컷)
+st.sidebar.subheader("💵 배당수익률 필터")
+min_div_input = st.sidebar.slider(
+    "최소 배당수익률 (%)",
+    min_value=0.0, max_value=12.0, value=1.0, step=0.1,
+    help="직전 연도 결산 기준 시가배당률이 설정값 이상인 기업만 선별합니다."
+)
+
+# 4. Backtest Settings
 st.sidebar.subheader("📈 백테스트 조건")
 rebalance_freq = st.sidebar.selectbox(
     "포트폴리오 리밸런싱 주기",
@@ -131,11 +139,12 @@ rebalance_freq = st.sidebar.selectbox(
 
 sort_by_input = st.sidebar.selectbox(
     "포트폴리오 구성 정렬 기준",
-    options=["psr", "marcap_asc", "marcap_desc"],
+    options=["psr", "marcap_asc", "marcap_desc", "div_desc"],
     format_func=lambda x: {
         "psr": "PSR 낮은 순 (가치주 위주)",
         "marcap_asc": "시가총액 작은 순 (소형주 위주)",
-        "marcap_desc": "시가총액 큰 순 (대형주 위주)"
+        "marcap_desc": "시가총액 큰 순 (대형주 위주)",
+        "div_desc": "배당수익률 높은 순 (고배당주 위주)"
     }[x]
 )
 
@@ -205,14 +214,15 @@ else:
             debt_threshold=debt_threshold,
             consecutive_profitable_quarters=consecutive_profitable_quarters,
             min_marcap=min_marcap_won,
-            max_marcap=max_marcap_won
+            max_marcap=max_marcap_won,
+            min_div_yield=min_div_input
         )
         
         # User dynamic sorting for display
         if not df_screened.empty:
             sort_option = st.radio(
                 "리스트 정렬 기준",
-                options=["PSR 낮은 순", "시가총액 낮은 순 (소형주)", "시가총액 높은 순 (대형주)"],
+                options=["PSR 낮은 순", "시가총액 낮은 순 (소형주)", "시가총액 높은 순 (대형주)", "배당수익률 높은 순"],
                 horizontal=True
             )
             if sort_option == "PSR 낮은 순":
@@ -221,6 +231,8 @@ else:
                 df_screened = df_screened.sort_values(by="marcap")
             elif sort_option == "시가총액 높은 순 (대형주)":
                 df_screened = df_screened.sort_values(by="marcap", ascending=False)
+            elif sort_option == "배당수익률 높은 순":
+                df_screened = df_screened.sort_values(by="div_yield", ascending=False)
         
         if df_screened.empty:
             st.info("설정한 필터 조건에 부합하는 종목이 코스닥 시장에 없습니다. 조건을 완화해 보세요.")
@@ -264,8 +276,9 @@ else:
             df_display['revenue_ttm'] = df_display['revenue_ttm'].map(lambda x: f"{int(x):,}억원")
             df_display['psr'] = df_display['psr'].map(lambda x: f"{x:.3f}")
             df_display['debt_ratio'] = df_display['debt_ratio'].map(lambda x: f"{x:.1f}%")
+            df_display['div_yield'] = df_display['div_yield'].map(lambda x: f"{x:.2f}%")
             
-            df_display.columns = ['종목코드', '종목명', '현재 주가', '시가총액', '최근 4분기 매출합계', '주가매출비율 (PSR)', '부채비율']
+            df_display.columns = ['종목코드', '종목명', '현재 주가', '시가총액', '최근 4분기 매출합계', '주가매출비율 (PSR)', '부채비율', '배당수익률']
             
             st.dataframe(df_display, use_container_width=True, hide_index=True)
             
@@ -282,7 +295,8 @@ else:
             sort_by_label = {
                 "psr": "PSR 낮은 순",
                 "marcap_asc": "시가총액 작은 순",
-                "marcap_desc": "시가총액 큰 순"
+                "marcap_desc": "시가총액 큰 순",
+                "div_desc": "배당수익률 높은 순"
             }[sort_by_input]
             st.subheader(f"💡 조건 부합 종목 ({sort_by_label} 상위 {portfolio_size}선)")
             
@@ -292,6 +306,8 @@ else:
                 df_portfolio_suggest = df_screened.sort_values(by="marcap").head(portfolio_size)
             elif sort_by_input == "marcap_desc":
                 df_portfolio_suggest = df_screened.sort_values(by="marcap", ascending=False).head(portfolio_size)
+            elif sort_by_input == "div_desc":
+                df_portfolio_suggest = df_screened.sort_values(by="div_yield", ascending=False).head(portfolio_size)
             else:
                 df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
             cols = st.columns(min(5, len(df_portfolio_suggest)))
@@ -302,7 +318,8 @@ else:
                     <div style="background-color:rgba(42, 82, 152, 0.08); padding:15px; border-radius:8px; border:1px solid rgba(42,82,152,0.2); text-align:center; margin-bottom:10px;">
                         <h4 style="margin:0 0 5px 0; color:#2a5298;">{row['name']}</h4>
                         <span style="font-size:0.8rem; color:#6c757d; font-weight:bold;">{row['code']}</span>
-                        <div style="font-size:1.2rem; font-weight:700; margin:8px 0;">PSR: {row['psr']:.3f}</div>
+                        <div style="font-size:1.2rem; font-weight:700; margin:6px 0;">PSR: {row['psr']:.3f}</div>
+                        <div style="font-size:0.85rem; color:#495057;">배당수익률: {row['div_yield']:.2f}%</div>
                         <div style="font-size:0.85rem; color:#495057;">부채비율: {row['debt_ratio']:.1f}%</div>
                         <div style="font-size:0.85rem; color:#495057;">시총: {int(row['marcap']/100000000):,}억</div>
                     </div>
@@ -331,6 +348,7 @@ else:
                     initial_capital=initial_capital,
                     min_marcap=min_marcap_won,
                     max_marcap=max_marcap_won,
+                    min_div_yield=min_div_input,
                     sort_by=sort_by_input
                 )
                 
