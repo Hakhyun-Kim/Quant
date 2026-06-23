@@ -72,9 +72,9 @@ st.markdown("""
 # Main Title Header
 st.markdown("""
 <div class="main-header">
-    <h1 style="margin:0; font-size:2.2rem; font-weight:700;">코스닥 PSR 저평가 퀀트 시스템</h1>
+    <h1 style="margin:0; font-size:2.2rem; font-weight:700;">KOSDAQ Quant Backtester & Screener</h1>
     <p style="margin:5px 0 0 0; opacity:0.85; font-size:1.0rem;">
-        매출 대비 저평가(낮은 PSR) 우량 기업 발굴 스크리너 & 백테스팅 플랫폼
+        사용자 정의 재무 필터 기반 코스닥 종목 스크리닝 및 과거 성과 시뮬레이터
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -220,7 +220,7 @@ else:
             )
             
             # Show top portfolio candidates
-            st.subheader(f"💡 최적 포트폴리오 제안 (PSR 낮은 종목 상위 {portfolio_size}선)")
+            st.subheader(f"💡 조건 부합 종목 (PSR 오름차순 상위 {portfolio_size}선)")
             df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
             cols = st.columns(min(5, len(df_portfolio_suggest)))
             for idx, row in df_portfolio_suggest.iterrows():
@@ -362,8 +362,7 @@ else:
                         - **최종 보유 현금**: {int(df_hist['cash'].iloc[-1]):,}원
                         - **최종 보유 주식 가치**: {int(df_hist['stock_value'].iloc[-1]):,}원
                         """)
-                        
-                        st.info("💡 퀀트 바스켓 투자는 개별 기업 리스크를 극복하고 시장 평균 대비 저평가 요인(PSR)의 회귀 본능을 따릅니다. 분산 투자의 비율을 유지해 주세요.")
+
 
 # ----------------- TAB 3: DATA MANAGEMENT -----------------
 with tab3:
