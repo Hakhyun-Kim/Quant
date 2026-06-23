@@ -55,9 +55,11 @@ def get_previous_quarters(quarter_str, n=3):
             
     return list(reversed(quarters))
 
-def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, consecutive_profitable_quarters=3):
+def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, consecutive_profitable_quarters=3,
+                  min_marcap=0, max_marcap=float('inf')):
     """
     특정 날짜 기준으로 조건에 맞는 종목들을 필터링합니다.
+    - min_marcap, max_marcap: 원 단위 시가총액 필터 범위
     """
     listing = data["listing"]
     financials = data["financials"]
@@ -166,6 +168,10 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
         stocks_count = listing[listing['code'] == code]['stocks'].values[0]
         market_cap = close_price * stocks_count
         
+        # 시가총액 필터링 (원 단위 비교)
+        if not (min_marcap <= market_cap <= max_marcap):
+            continue
+            
         # PSR = 시가총액 / (매출액 * 1억 - 네이버 재무제표 단위는 대개 억 원이므로 보정)
         # 네이버 금융의 매출액 표는 기본이 억 원 단위입니다.
         # 시가총액(원) / (매출액(억원) * 10^8)
@@ -186,10 +192,13 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
     return pd.DataFrame(screened_results)
 
 def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_threshold=100.0, 
-                 consecutive_profitable_quarters=3, portfolio_size=10, rebalance_freq="Q", initial_capital=100000000):
+                 consecutive_profitable_quarters=3, portfolio_size=10, rebalance_freq="Q", initial_capital=100000000,
+                 min_marcap=0, max_marcap=float('inf'), sort_by="psr"):
     """
     퀀트 투자 전략 백테스트를 수행합니다.
     - rebalance_freq: "Q" (분기별), "M" (월별), "H" (반기별), "Y" (연별)
+    - min_marcap, max_marcap: 원 단위 시가총액 필터 범위
+    - sort_by: "psr" (PSR 오름차순), "marcap_asc" (시총 오름차순), "marcap_desc" (시총 내림차순)
     """
     prices = data["prices"]
     df_index = data["index"]
@@ -287,12 +296,22 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                 today, data, 
                 psr_threshold=psr_threshold, 
                 debt_threshold=debt_threshold,
-                consecutive_profitable_quarters=consecutive_profitable_quarters
+                consecutive_profitable_quarters=consecutive_profitable_quarters,
+                min_marcap=min_marcap,
+                max_marcap=max_marcap
             )
             
             if not df_screened.empty:
-                # PSR이 가장 낮은 순으로 정렬 후 상위 K개 선택
-                df_selected = df_screened.sort_values(by="psr").head(portfolio_size)
+                # 지정 정렬 기준에 맞춰 상위 K개 선택
+                if sort_by == "psr":
+                    df_selected = df_screened.sort_values(by="psr").head(portfolio_size)
+                elif sort_by == "marcap_asc":
+                    df_selected = df_screened.sort_values(by="marcap").head(portfolio_size)
+                elif sort_by == "marcap_desc":
+                    df_selected = df_screened.sort_values(by="marcap", ascending=False).head(portfolio_size)
+                else:
+                    df_selected = df_screened.sort_values(by="psr").head(portfolio_size)
+                    
                 selected_codes = df_selected['code'].tolist()
                 
                 # 가용 현금을 균등 배분하여 매수

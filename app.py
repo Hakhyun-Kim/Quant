@@ -105,7 +105,23 @@ consecutive_profitable_quarters = st.sidebar.number_input(
     help="지정된 분기 연속으로 영업이익이 흑자(>0)를 달성한 기업만 선별합니다."
 )
 
-# 2. Backtest Settings
+# 2. Corporate Size Filter (시가총액 컷)
+st.sidebar.subheader("🏢 기업 규모(시가총액) 필터")
+min_marcap_input = st.sidebar.number_input(
+    "최소 시가총액 (억원)",
+    min_value=0, value=0, step=50,
+    help="설정한 금액 미만의 시가총액을 가진 초소형 기업을 제외합니다."
+)
+max_marcap_input = st.sidebar.number_input(
+    "최대 시가총액 (억원, 0은 제한없음)",
+    min_value=0, value=0, step=100,
+    help="설정한 금액을 초과하는 대형 기업들을 제외합니다."
+)
+
+min_marcap_won = min_marcap_input * 100000000
+max_marcap_won = max_marcap_input * 100000000 if max_marcap_input > 0 else float('inf')
+
+# 3. Backtest Settings
 st.sidebar.subheader("📈 백테스트 조건")
 rebalance_freq = st.sidebar.selectbox(
     "포트폴리오 리밸런싱 주기",
@@ -113,10 +129,20 @@ rebalance_freq = st.sidebar.selectbox(
     format_func=lambda x: {"Q": "매 분기별 (Quarterly)", "M": "매 월별 (Monthly)", "H": "매 반기별 (Semi-Annually)", "Y": "매 년별 (Annually)"}[x]
 )
 
+sort_by_input = st.sidebar.selectbox(
+    "포트폴리오 구성 정렬 기준",
+    options=["psr", "marcap_asc", "marcap_desc"],
+    format_func=lambda x: {
+        "psr": "PSR 낮은 순 (가치주 위주)",
+        "marcap_asc": "시가총액 작은 순 (소형주 위주)",
+        "marcap_desc": "시가총액 큰 순 (대형주 위주)"
+    }[x]
+)
+
 portfolio_size = st.sidebar.slider(
     "포트폴리오 편입 종목 수",
     min_value=3, max_value=30, value=10, step=1,
-    help="필터 조건에 부합하는 종목 중 PSR이 가장 낮은 순으로 몇 개 종목을 매수할지 결정합니다."
+    help="필터 조건에 부합하는 종목 중 정렬 기준 순으로 몇 개 종목을 매수할지 결정합니다."
 )
 
 initial_capital = st.sidebar.number_input(
@@ -160,8 +186,24 @@ else:
             latest_date_str, cached_data,
             psr_threshold=psr_threshold,
             debt_threshold=debt_threshold,
-            consecutive_profitable_quarters=consecutive_profitable_quarters
+            consecutive_profitable_quarters=consecutive_profitable_quarters,
+            min_marcap=min_marcap_won,
+            max_marcap=max_marcap_won
         )
+        
+        # User dynamic sorting for display
+        if not df_screened.empty:
+            sort_option = st.radio(
+                "리스트 정렬 기준",
+                options=["PSR 낮은 순", "시가총액 낮은 순 (소형주)", "시가총액 높은 순 (대형주)"],
+                horizontal=True
+            )
+            if sort_option == "PSR 낮은 순":
+                df_screened = df_screened.sort_values(by="psr")
+            elif sort_option == "시가총액 낮은 순 (소형주)":
+                df_screened = df_screened.sort_values(by="marcap")
+            elif sort_option == "시가총액 높은 순 (대형주)":
+                df_screened = df_screened.sort_values(by="marcap", ascending=False)
         
         if df_screened.empty:
             st.info("설정한 필터 조건에 부합하는 종목이 코스닥 시장에 없습니다. 조건을 완화해 보세요.")
@@ -220,8 +262,21 @@ else:
             )
             
             # Show top portfolio candidates
-            st.subheader(f"💡 조건 부합 종목 (PSR 오름차순 상위 {portfolio_size}선)")
-            df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
+            sort_by_label = {
+                "psr": "PSR 낮은 순",
+                "marcap_asc": "시가총액 작은 순",
+                "marcap_desc": "시가총액 큰 순"
+            }[sort_by_input]
+            st.subheader(f"💡 조건 부합 종목 ({sort_by_label} 상위 {portfolio_size}선)")
+            
+            if sort_by_input == "psr":
+                df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
+            elif sort_by_input == "marcap_asc":
+                df_portfolio_suggest = df_screened.sort_values(by="marcap").head(portfolio_size)
+            elif sort_by_input == "marcap_desc":
+                df_portfolio_suggest = df_screened.sort_values(by="marcap", ascending=False).head(portfolio_size)
+            else:
+                df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
             cols = st.columns(min(5, len(df_portfolio_suggest)))
             for idx, row in df_portfolio_suggest.iterrows():
                 col_idx = idx % len(cols)
@@ -256,7 +311,10 @@ else:
                     consecutive_profitable_quarters=consecutive_profitable_quarters,
                     portfolio_size=portfolio_size,
                     rebalance_freq=rebalance_freq,
-                    initial_capital=initial_capital
+                    initial_capital=initial_capital,
+                    min_marcap=min_marcap_won,
+                    max_marcap=max_marcap_won,
+                    sort_by=sort_by_input
                 )
                 
                 if result is None:
