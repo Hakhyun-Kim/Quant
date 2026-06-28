@@ -14,7 +14,7 @@ def ensure_data_dir():
         os.makedirs(DATA_DIR)
 
 def get_kosdaq_listing():
-    """FinanceDataReader를 통해 코스닥 상장 종목 리스트를 가져옵니다."""
+    """Fetch the KOSDAQ stock listing using FinanceDataReader."""
     try:
         df = fdr.StockListing("KOSDAQ")
         # 필요한 컬럼만 추출
@@ -26,7 +26,7 @@ def get_kosdaq_listing():
         return pd.DataFrame()
 
 def crawl_financial_data(code):
-    """네이버 금융에서 특정 종목의 분기/연간 재무 데이터를 크롤링합니다."""
+    """Crawl quarterly/annual financial data for a specific stock ticker from Naver Finance."""
     url = f"https://finance.naver.com/item/main.naver?code={code}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -63,15 +63,15 @@ def crawl_financial_data(code):
                 continue
             row_name = th.text.strip()
             
-            # 한글 인코딩 변형 방지를 위한 강건한 매칭
+            # Match Korean row headers from Naver Finance to standardized English keys
             key = None
-            if "매출액" in row_name:
+            if "매출액" in row_name:  # Revenue
                 key = "revenue"
-            elif "영업이익" in row_name and "영업이익률" not in row_name:
+            elif "영업이익" in row_name and "영업이익률" not in row_name:  # Operating Profit
                 key = "operating_profit"
-            elif "부채비율" in row_name:
+            elif "부채비율" in row_name:  # Debt Ratio
                 key = "debt_ratio"
-            elif "시가배당률" in row_name:
+            elif "시가배당률" in row_name:  # Dividend Yield
                 key = "dividend_yield"
                 
             if not key:
@@ -96,38 +96,38 @@ def crawl_financial_data(code):
         }
         
     except Exception as e:
-        # 조용히 실패 처리
+        # Silently handle failures
         return None
 
 def collect_all_data(progress_callback=None):
-    """코스닥 모든 주가 및 재무제표 데이터를 수집하고 로컬에 캐싱합니다."""
+    """Collect and cache daily price and financial statement data for all KOSDAQ listings locally."""
     ensure_data_dir()
     start_time = time.time()
     
-    print("1. 코스닥 상장 종목 리스트 수집 중...")
+    print("1. Collecting KOSDAQ stock listing...")
     df_listing = get_kosdaq_listing()
     if df_listing.empty:
-        print("상장 종목 리스트를 가져오는데 실패했습니다.")
+        print("Failed to fetch stock listing.")
         return False
         
     # 종목 리스트 저장
     listing_path = os.path.join(DATA_DIR, "kosdaq_listing.csv")
     df_listing.to_csv(listing_path, index=False, encoding="utf-8-sig")
     
-    # 2. 코스닥 지수 수집
-    print("2. 코스닥 지수 데이터 수집 중...")
+    # 2. Collect KOSDAQ Index
+    print("2. Collecting KOSDAQ index data...")
     try:
         df_index = fdr.DataReader("KQ11", "2024-01-01")
         df_index = df_index[['Close']].rename(columns={'Close': 'close'})
         index_path = os.path.join(DATA_DIR, "kosdaq_index.csv")
         df_index.to_csv(index_path, encoding="utf-8-sig")
     except Exception as e:
-        print(f"코스닥 지수 수집 실패: {e}")
+        print(f"Failed to collect KOSDAQ index: {e}")
         
-    # 3. 개별 종목 재무제표 크롤링 (병렬)
+    # 3. Crawl individual financial statements in parallel
     tickers = df_listing['code'].tolist()
     total_tickers = len(tickers)
-    print(f"3. {total_tickers}개 종목 재무 데이터 수집 시작...")
+    print(f"3. Starting financial data collection for {total_tickers} tickers...")
     
     financials_cache = {}
     
@@ -149,16 +149,16 @@ def collect_all_data(progress_callback=None):
     finally:
         executor.shutdown(wait=False)
         
-    print(f"재무 데이터 수집 완료 (성공: {len(financials_cache)}/{total_tickers} 종목)")
+    print(f"Financial data collection complete (Success: {len(financials_cache)}/{total_tickers} tickers)")
                 
     # 재무 데이터 저장
     financials_path = os.path.join(DATA_DIR, "kosdaq_financials.json")
     with open(financials_path, "w", encoding="utf-8") as f:
         json.dump(financials_cache, f, ensure_ascii=False, indent=4)
         
-    # 4. 과거 주가 데이터 수집 (백테스트 가격 시계열 구축)
-    # 2년치 가격 데이터
-    print("4. 과거 주가 데이터 수집 중...")
+    # 4. Collect historical price data (building price time series for backtesting)
+    # 2 years of price data
+    print("4. Collecting historical price data...")
     prices_cache = {}
     completed_prices = 0
     
@@ -190,7 +190,7 @@ def collect_all_data(progress_callback=None):
     finally:
         executor.shutdown(wait=False)
             
-    print(f"주가 수집 완료 (성공: {len(prices_cache)}/{total_tickers} 종목)")
+    print(f"Price data collection complete (Success: {len(prices_cache)}/{total_tickers} tickers)")
                 
     # 주가 데이터 저장
     prices_path = os.path.join(DATA_DIR, "kosdaq_prices.json")
@@ -198,12 +198,12 @@ def collect_all_data(progress_callback=None):
         json.dump(prices_cache, f, ensure_ascii=False)
         
     elapsed = time.time() - start_time
-    print(f"\n데이터 수집 완료! 총 소요시간: {elapsed:.1f}초")
-    print(f"수집 성공 종목 수: 재무데이터 {len(financials_cache)}개, 주가데이터 {len(prices_cache)}개")
+    print(f"\nData collection complete! Elapsed time: {elapsed:.1f}s")
+    print(f"Successfully collected: Financials {len(financials_cache)}, Prices {len(prices_cache)}")
     return True
 
 def load_cached_data():
-    """캐시된 로컬 데이터를 불러옵니다."""
+    """Load cached local data from the file system."""
     ensure_data_dir()
     
     listing_path = os.path.join(DATA_DIR, "kosdaq_listing.csv")
@@ -211,7 +211,7 @@ def load_cached_data():
     prices_path = os.path.join(DATA_DIR, "kosdaq_prices.json")
     index_path = os.path.join(DATA_DIR, "kosdaq_index.csv")
     
-    # 캐시 파일이 존재하는지 검증
+    # Verify if cache files exist
     if not (os.path.exists(listing_path) and os.path.exists(financials_path) and 
             os.path.exists(prices_path) and os.path.exists(index_path)):
         return None
@@ -239,5 +239,5 @@ def load_cached_data():
         return None
 
 if __name__ == "__main__":
-    # 스크립트 단독 실행 시 데이터 수집 수행
+    # Execute data collection when run as a standalone script
     collect_all_data()

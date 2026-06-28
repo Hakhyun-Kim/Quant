@@ -74,7 +74,7 @@ st.markdown("""
 <div class="main-header">
     <h1 style="margin:0; font-size:2.2rem; font-weight:700;">KOSDAQ Quant Backtester & Screener</h1>
     <p style="margin:5px 0 0 0; opacity:0.85; font-size:1.0rem;">
-        사용자 정의 재무 필터 기반 코스닥 종목 스크리닝 및 과거 성과 시뮬레이터
+        Simulate historical performance and screen KOSDAQ equities using custom financial parameters
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -83,79 +83,79 @@ st.markdown("""
 cached_data = data_collector.load_cached_data()
 
 # ----------------- SIDEBAR PARAMETERS -----------------
-st.sidebar.header("⚙️ 전략 및 백테스트 설정")
+st.sidebar.header("⚙️ Strategy & Backtest Settings")
 
 # 1. Strategy Parameters
-st.sidebar.subheader("🎯 스크리닝 필터 조건")
+st.sidebar.subheader("🎯 Screening Filter Criteria")
 psr_threshold = st.sidebar.slider(
-    "주가매출비율 (PSR) 상한선",
+    "Price-to-Sales Ratio (PSR) Upper Bound",
     min_value=0.1, max_value=2.0, value=0.8, step=0.05,
-    help="PSR = 시가총액 / 최근 4분기 매출액 합계. 낮을수록 저평가 상태입니다."
+    help="PSR = Market Capitalization / Sum of Revenue for recent 4 quarters. Lower values indicate underpricing."
 )
 
 debt_threshold = st.sidebar.slider(
-    "부채비율 상한선 (%)",
+    "Debt Ratio Upper Bound (%)",
     min_value=30.0, max_value=300.0, value=100.0, step=5.0,
-    help="부채비율 = 부채총계 / 자본총계 * 100. 재무 안전성 필터입니다."
+    help="Debt Ratio = Total Liabilities / Total Equity * 100. Financial safety filter."
 )
 
 consecutive_profitable_quarters = st.sidebar.number_input(
-    "영업이익 연속 흑자 분기 수",
+    "Consecutive Profitable Quarters (Operating Profit)",
     min_value=1, max_value=6, value=3, step=1,
-    help="지정된 분기 연속으로 영업이익이 흑자(>0)를 달성한 기업만 선별합니다."
+    help="Filters for companies achieving positive operating profits (>0) for the designated consecutive quarters."
 )
 
-# 2. Corporate Size Filter (시가총액 컷)
-st.sidebar.subheader("🏢 기업 규모(시가총액) 필터")
+# 2. Corporate Size Filter (Market Cap cut)
+st.sidebar.subheader("🏢 Corporate Size (Market Cap) Filter")
 min_marcap_input = st.sidebar.number_input(
-    "최소 시가총액 (억원)",
+    "Min Market Cap (100M KRW)",
     min_value=0, value=500, step=50,
-    help="설정한 금액 미만의 시가총액을 가진 초소형 기업을 제외합니다."
+    help="Excludes micro-cap companies with a market cap below the configured amount."
 )
 max_marcap_input = st.sidebar.number_input(
-    "최대 시가총액 (억원, 0은 제한없음)",
+    "Max Market Cap (100M KRW, 0 for No Limit)",
     min_value=0, value=0, step=100,
-    help="설정한 금액을 초과하는 대형 기업들을 제외합니다."
+    help="Excludes large-cap companies with a market cap above the configured amount."
 )
 
 min_marcap_won = min_marcap_input * 100000000
 max_marcap_won = max_marcap_input * 100000000 if max_marcap_input > 0 else float('inf')
 
-# 3. Dividend Filter (배당수익률 컷)
-st.sidebar.subheader("💵 배당수익률 필터")
+# 3. Dividend Filter (Dividend Yield cut)
+st.sidebar.subheader("💵 Dividend Yield Filter")
 min_div_input = st.sidebar.slider(
-    "최소 배당수익률 (%)",
+    "Min Dividend Yield (%)",
     min_value=0.0, max_value=12.0, value=1.0, step=0.1,
-    help="직전 연도 결산 기준 시가배당률이 설정값 이상인 기업만 선별합니다."
+    help="Filters for companies with a dividend yield equal to or greater than the value based on the last fiscal year's closing."
 )
 
 # 4. Backtest Settings
-st.sidebar.subheader("📈 백테스트 조건")
+st.sidebar.subheader("📈 Backtest Settings")
 rebalance_freq = st.sidebar.selectbox(
-    "포트폴리오 리밸런싱 주기",
+    "Portfolio Rebalancing Frequency",
     options=["Q", "M", "H", "Y"],
-    format_func=lambda x: {"Q": "매 분기별 (Quarterly)", "M": "매 월별 (Monthly)", "H": "매 반기별 (Semi-Annually)", "Y": "매 년별 (Annually)"}[x]
+    format_func=lambda x: {"Q": "Quarterly (Q)", "M": "Monthly (M)", "H": "Semi-Annually (H)", "Y": "Annually (Y)"}[x]
 )
 
 sort_by_input = st.sidebar.selectbox(
-    "포트폴리오 구성 정렬 기준",
+    "Portfolio Sorting Criterion",
     options=["psr", "marcap_asc", "marcap_desc", "div_desc"],
     format_func=lambda x: {
-        "psr": "PSR 낮은 순 (가치주 위주)",
-        "marcap_asc": "시가총액 작은 순 (소형주 위주)",
-        "marcap_desc": "시가총액 큰 순 (대형주 위주)",
-        "div_desc": "배당수익률 높은 순 (고배당주 위주)"
+        "psr": "Lowest PSR (Value Stock Bias)",
+        "marcap_asc": "Lowest Market Cap (Small-Cap Bias)",
+        "marcap_desc": "Highest Market Cap (Large-Cap Bias)",
+        "div_desc": "Highest Dividend Yield (High-Dividend Bias)"
     }[x]
 )
 
 portfolio_size = st.sidebar.slider(
-    "포트폴리오 편입 종목 수",
+    "Portfolio Size (Number of Holdings)",
     min_value=3, max_value=30, value=10, step=1,
-    help="필터 조건에 부합하는 종목 중 정렬 기준 순으로 몇 개 종목을 매수할지 결정합니다."
+    help="Determines the maximum number of stocks to hold in the portfolio, selected in order of the sorting criterion."
 )
 
 initial_capital = st.sidebar.number_input(
-    "초기 투자 원금 (원)",
+    "Initial Capital (KRW)",
     min_value=1000000, max_value=10000000000, value=100000000, step=10000000,
     format="%d"
 )
@@ -171,14 +171,14 @@ else:
     latest_end = datetime(2026, 6, 23)
 
 start_date = st.sidebar.date_input(
-    "백테스트 시작일", 
+    "Backtest Start Date", 
     value=max(safe_start, datetime(2024, 5, 31)),
     min_value=safe_start,
     max_value=latest_end,
-    help=f"로컬 재무 데이터 기준 가용 범위 하한선은 {safe_start.strftime('%Y-%m-%d')}입니다. 이보다 이전 날짜에는 데이터가 없어 시뮬레이션이 불가능합니다."
+    help=f"The lower bound of available local financial data is {safe_start.strftime('%Y-%m-%d')}. Backtesting before this date is unavailable."
 )
 end_date = st.sidebar.date_input(
-    "백테스트 종료일", 
+    "Backtest End Date", 
     value=latest_end,
     min_value=safe_start,
     max_value=latest_end
@@ -186,23 +186,23 @@ end_date = st.sidebar.date_input(
 
 # Validation check for dates
 if start_date >= end_date:
-    st.sidebar.error("시작일은 종료일보다 이전이어야 합니다.")
+    st.sidebar.error("Start date must be before end date.")
 
 
 # ----------------- TABS CREATION -----------------
-tab1, tab2, tab3 = st.tabs(["📊 실시간 스크리너", "📈 백테스트 성과분석", "⚙️ 데이터 캐시 관리"])
+tab1, tab2, tab3 = st.tabs(["📊 Real-time Screener", "📈 Backtest Performance", "⚙️ Local Database Cache"])
 
 # If data is not cached, force user to download first
 if cached_data is None:
     with tab1:
-        st.warning("⚠️ 로컬 캐시에 저장된 주가 및 재무제표 데이터가 없습니다. 먼저 **데이터 캐시 관리** 탭에서 데이터를 수집해 주세요.")
+        st.warning("⚠️ No cached stock price or financial data found. Please run the collector in the **Local Database Cache** tab first.")
     with tab2:
-        st.warning("⚠️ 백테스트를 실행하려면 먼저 **데이터 캐시 관리** 탭에서 데이터를 수집해 주세요.")
+        st.warning("⚠️ Caching is required before running the backtest. Please run the collector in the **Local Database Cache** tab first.")
 else:
     # ----------------- TAB 1: SCREENER -----------------
     with tab1:
-        st.subheader("🔍 현재 조건 만족 코스닥 종목 리스트")
-        st.write("사이드바에 정의된 필터를 적용하여 현재 가장 최근 분기 실적 기준으로 선별된 기업들입니다.")
+        st.subheader("🔍 KOSDAQ Screened Stock Candidates")
+        st.write("Filtered companies based on the criteria configured in the sidebar (evaluated using the most recent public quarterly financial statements).")
         
         # Today or latest business day available in prices
         latest_date_str = cached_data["index"].index[-1].strftime("%Y-%m-%d")
@@ -221,49 +221,49 @@ else:
         # User dynamic sorting for display
         if not df_screened.empty:
             sort_option = st.radio(
-                "리스트 정렬 기준",
-                options=["PSR 낮은 순", "시가총액 낮은 순 (소형주)", "시가총액 높은 순 (대형주)", "배당수익률 높은 순"],
+                "List Sorting Method",
+                options=["Lowest PSR", "Lowest Market Cap (Small-Cap)", "Highest Market Cap (Large-Cap)", "Highest Dividend Yield"],
                 horizontal=True
             )
-            if sort_option == "PSR 낮은 순":
+            if sort_option == "Lowest PSR":
                 df_screened = df_screened.sort_values(by="psr")
-            elif sort_option == "시가총액 낮은 순 (소형주)":
+            elif sort_option == "Lowest Market Cap (Small-Cap)":
                 df_screened = df_screened.sort_values(by="marcap")
-            elif sort_option == "시가총액 높은 순 (대형주)":
+            elif sort_option == "Highest Market Cap (Large-Cap)":
                 df_screened = df_screened.sort_values(by="marcap", ascending=False)
-            elif sort_option == "배당수익률 높은 순":
+            elif sort_option == "Highest Dividend Yield":
                 df_screened = df_screened.sort_values(by="div_yield", ascending=False)
         
         if df_screened.empty:
-            st.info("설정한 필터 조건에 부합하는 종목이 코스닥 시장에 없습니다. 조건을 완화해 보세요.")
+            st.info("No stocks match the selected criteria in the KOSDAQ market. Please loosen the sidebar filter parameters.")
         else:
             # Metrics Summary Row
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">선별 종목 수</div>
-                    <div class="metric-value">{len(df_screened)}개</div>
+                    <div class="metric-title">Screened Companies</div>
+                    <div class="metric-value">{len(df_screened)}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col2:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">선별 종목 평균 PSR</div>
+                    <div class="metric-title">Average PSR</div>
                     <div class="metric-value">{df_screened['psr'].mean():.3f}</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col3:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">선별 종목 평균 부채비율</div>
+                    <div class="metric-title">Average Debt Ratio</div>
                     <div class="metric-value">{df_screened['debt_ratio'].mean():.1f}%</div>
                 </div>
                 """, unsafe_allow_html=True)
             with col4:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">기준 데이터 일시</div>
+                    <div class="metric-title">Reference Data Date</div>
                     <div class="metric-value">{latest_date_str}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -271,21 +271,21 @@ else:
             # Table visualization
             df_display = df_screened.copy()
             # Clean formats
-            df_display['close'] = df_display['close'].map(lambda x: f"{int(x):,}원")
-            df_display['marcap'] = df_display['marcap'].map(lambda x: f"{int(x/100000000):,}억원")
-            df_display['revenue_ttm'] = df_display['revenue_ttm'].map(lambda x: f"{int(x):,}억원")
+            df_display['close'] = df_display['close'].map(lambda x: f"{int(x):,} KRW")
+            df_display['marcap'] = df_display['marcap'].map(lambda x: f"{int(x/100000000):,}B KRW")
+            df_display['revenue_ttm'] = df_display['revenue_ttm'].map(lambda x: f"{int(x):,}B KRW")
             df_display['psr'] = df_display['psr'].map(lambda x: f"{x:.3f}")
             df_display['debt_ratio'] = df_display['debt_ratio'].map(lambda x: f"{x:.1f}%")
             df_display['div_yield'] = df_display['div_yield'].map(lambda x: f"{x:.2f}%")
             
-            df_display.columns = ['종목코드', '종목명', '현재 주가', '시가총액', '최근 4분기 매출합계', '주가매출비율 (PSR)', '부채비율', '배당수익률']
+            df_display.columns = ['Ticker', 'Stock Name', 'Current Price', 'Market Cap', 'TTM Revenue', 'PSR', 'Debt Ratio', 'Dividend Yield']
             
             st.dataframe(df_display, use_container_width=True, hide_index=True)
             
             # Export CSV
             csv_data = df_screened.to_csv(index=False, encoding="utf-8-sig")
             st.download_button(
-                label="📥 선별 종목 리스트 다운로드 (CSV)",
+                label="📥 Download Screened Stocks (CSV)",
                 data=csv_data,
                 file_name=f"kosdaq_screener_{latest_date_str}.csv",
                 mime="text/csv"
@@ -293,12 +293,12 @@ else:
             
             # Show top portfolio candidates
             sort_by_label = {
-                "psr": "PSR 낮은 순",
-                "marcap_asc": "시가총액 작은 순",
-                "marcap_desc": "시가총액 큰 순",
-                "div_desc": "배당수익률 높은 순"
+                "psr": "Lowest PSR",
+                "marcap_asc": "Lowest Market Cap",
+                "marcap_desc": "Highest Market Cap",
+                "div_desc": "Highest Dividend Yield"
             }[sort_by_input]
-            st.subheader(f"💡 조건 부합 종목 ({sort_by_label} 상위 {portfolio_size}선)")
+            st.subheader(f"💡 Portfolio Candidates (Top {portfolio_size} by {sort_by_label})")
             
             if sort_by_input == "psr":
                 df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
@@ -311,7 +311,7 @@ else:
             else:
                 df_portfolio_suggest = df_screened.sort_values(by="psr").head(portfolio_size)
             cols = st.columns(min(5, len(df_portfolio_suggest)))
-            for idx, row in df_portfolio_suggest.iterrows():
+            for idx, row in df_portfolio_suggest.reset_index(drop=True).iterrows():
                 col_idx = idx % len(cols)
                 with cols[col_idx]:
                     st.markdown(f"""
@@ -319,20 +319,20 @@ else:
                         <h4 style="margin:0 0 5px 0; color:#2a5298;">{row['name']}</h4>
                         <span style="font-size:0.8rem; color:#6c757d; font-weight:bold;">{row['code']}</span>
                         <div style="font-size:1.2rem; font-weight:700; margin:6px 0;">PSR: {row['psr']:.3f}</div>
-                        <div style="font-size:0.85rem; color:#495057;">배당수익률: {row['div_yield']:.2f}%</div>
-                        <div style="font-size:0.85rem; color:#495057;">부채비율: {row['debt_ratio']:.1f}%</div>
-                        <div style="font-size:0.85rem; color:#495057;">시총: {int(row['marcap']/100000000):,}억</div>
+                        <div style="font-size:0.85rem; color:#495057;">Dividend: {row['div_yield']:.2f}%</div>
+                        <div style="font-size:0.85rem; color:#495057;">Debt Ratio: {row['debt_ratio']:.1f}%</div>
+                        <div style="font-size:0.85rem; color:#495057;">Marcap: {int(row['marcap']/100000000):,}B</div>
                     </div>
                     """, unsafe_allow_html=True)
 
     # ----------------- TAB 2: BACKTEST -----------------
     with tab2:
-        st.subheader("📊 지정 기간 전략 백테스트 시뮬레이션")
-        st.write("설정된 필터 조건과 리밸런싱 주기에 맞춰 코스닥 시장에서 과거에 이 전략을 취했을 때의 상세 가상 성과 보고서입니다.")
+        st.subheader("📊 Strategy Backtest Simulation")
+        st.write("Backtest simulation report showing the historical performance of the strategy under KOSDAQ market data.")
         
         # Trigger backtest button
-        if st.button("🚀 백테스트 실행", type="primary", use_container_width=True):
-            with st.spinner("백테스트 시뮬레이션 계산 중..."):
+        if st.button("🚀 Run Backtest", type="primary", use_container_width=True):
+            with st.spinner("Simulating portfolio backtest..."):
                 start_str = start_date.strftime("%Y-%m-%d")
                 end_str = end_date.strftime("%Y-%m-%d")
                 
@@ -353,7 +353,7 @@ else:
                 )
                 
                 if result is None:
-                    st.error("백테스트를 실행할 수 없습니다. 날짜가 올바른 영업일인지, 캐시 데이터 범위 내에 있는지 확인하세요.")
+                    st.error("Cannot run backtest. Verify if the dates are valid trading days within the cached database range.")
                 else:
                     df_hist, metrics, df_trades = result
                     
@@ -369,62 +369,62 @@ else:
                         excess_class = "delta-plus" if excess >= 0 else "delta-minus"
                         st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">누적 수익률 (포트폴리오 vs 벤치마크)</div>
+                            <div class="metric-title">Cumulative Return (Portfolio vs Index)</div>
                             <div class="metric-value {ret_class}">{metrics['total_return']:.1f}%</div>
-                            <div class="metric-delta">코스닥 대비 초과수익: <span class="{excess_class}">{excess:+.1f}%p</span></div>
+                            <div class="metric-delta">Outperformance vs Benchmark: <span class="{excess_class}">{excess:+.1f}%p</span></div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                     with col2:
                         st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">연평균 복리수익률 (CAGR)</div>
+                            <div class="metric-title">Compound Annual Growth Rate (CAGR)</div>
                             <div class="metric-value">{metrics['cagr']:.1f}%</div>
-                            <div class="metric-delta">벤치마크 CAGR: <span>{metrics['index_cagr']:.1f}%</span></div>
+                            <div class="metric-delta">Benchmark CAGR: <span>{metrics['index_cagr']:.1f}%</span></div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                     with col3:
                         st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">최대 낙폭 (MDD)</div>
+                            <div class="metric-title">Maximum Drawdown (MDD)</div>
                             <div class="metric-value" style="color:#dc3545;">{metrics['mdd']:.1f}%</div>
-                            <div class="metric-delta" style="color:#6c757d;">벤치마크 MDD: {metrics['index_mdd']:.1f}%</div>
+                            <div class="metric-delta" style="color:#6c757d;">Benchmark MDD: {metrics['index_mdd']:.1f}%</div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                     with col4:
                         st.markdown(f"""
                         <div class="metric-card">
-                            <div class="metric-title">포트폴리오 샤프 지수</div>
+                            <div class="metric-title">Portfolio Sharpe Ratio</div>
                             <div class="metric-value">{metrics['sharpe']:.2f}</div>
-                            <div class="metric-delta">총 리밸런싱 횟수: <span>{metrics['rebalance_count']}회</span></div>
+                            <div class="metric-delta">Total Rebalances: <span>{metrics['rebalance_count']} times</span></div>
                         </div>
                         """, unsafe_allow_html=True)
                         
                     # 2. Cumulative Return Chart (Interactive Plotly)
-                    st.subheader("📈 누적 수익률 추이 비교")
+                    st.subheader("📈 Cumulative Return Performance Comparison")
                     
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(
                         x=df_hist.index,
                         y=df_hist["portfolio_return"],
                         mode='lines',
-                        name='퀀트 포트폴리오',
+                        name='Quant Portfolio',
                         line=dict(color='#2a5298', width=2.5)
                     ))
                     fig.add_trace(go.Scatter(
                         x=df_hist.index,
                         y=df_hist["index_return"],
                         mode='lines',
-                        name='코스닥 지수 (Benchmark)',
+                        name='KOSDAQ Index (Benchmark)',
                         line=dict(color='#ff7f0e', width=1.5, dash='dash')
                     ))
                     
                     fig.update_layout(
-                        title="포트폴리오 vs 코스닥 지수 누적 수익률 (%)",
-                        xaxis_title="날짜",
-                        yaxis_title="수익률 (%)",
+                        title="Portfolio vs KOSDAQ Index Cumulative Return (%)",
+                        xaxis_title="Date",
+                        yaxis_title="Return (%)",
                         hovermode="x unified",
                         legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
                         margin=dict(l=20, r=20, t=50, b=20),
@@ -436,31 +436,31 @@ else:
                     col_left, col_right = st.columns([2, 1])
                     
                     with col_left:
-                        st.subheader("📜 상세 매매 내역 로그")
+                        st.subheader("📜 Detailed Trade Log")
                         if df_trades.empty:
-                            st.write("백테스트 기간 동안 매매 거래 내역이 존재하지 않습니다.")
+                            st.write("No transaction trades occurred during the backtest period.")
                         else:
                             df_trades_disp = df_trades.copy()
-                            df_trades_disp['price'] = df_trades_disp['price'].map(lambda x: f"{int(x):,}원")
-                            df_trades_disp['value'] = df_trades_disp['value'].map(lambda x: f"{int(x):,}원")
-                            df_trades_disp.columns = ['거래일자', '구분', '종목코드', '종목명', '수량', '체결단가', '총 체결금액']
+                            df_trades_disp['price'] = df_trades_disp['price'].map(lambda x: f"{int(x):,} KRW")
+                            df_trades_disp['value'] = df_trades_disp['value'].map(lambda x: f"{int(x):,} KRW")
+                            df_trades_disp.columns = ['Trade Date', 'Type', 'Ticker', 'Stock Name', 'Shares', 'Execution Price', 'Total Cost']
                             st.dataframe(df_trades_disp, use_container_width=True, height=350)
                             
                     with col_right:
-                        st.subheader("💰 최종 포트폴리오 가치 현황")
+                        st.subheader("💰 Final Portfolio Value Status")
                         st.markdown(f"""
-                        - **초기 투자금**: {initial_capital:,}원
-                        - **최종 자산 평가액**: {int(metrics['final_value']):,}원
-                        - **총 수익 금액**: {int(metrics['final_value'] - initial_capital):,}원
-                        - **최종 보유 현금**: {int(df_hist['cash'].iloc[-1]):,}원
-                        - **최종 보유 주식 가치**: {int(df_hist['stock_value'].iloc[-1]):,}원
+                        - **Initial Principal**: {initial_capital:,} KRW
+                        - **Final Portfolio Value**: {int(metrics['final_value']):,} KRW
+                        - **Total Net Profits**: {int(metrics['final_value'] - initial_capital):,} KRW
+                        - **Final Cash Balance**: {int(df_hist['cash'].iloc[-1]):,} KRW
+                        - **Final Stock Assets Value**: {int(df_hist['stock_value'].iloc[-1]):,} KRW
                         """)
 
 
 # ----------------- TAB 3: DATA MANAGEMENT -----------------
 with tab3:
-    st.subheader("⚙️ 로컬 금융 데이터베이스 관리")
-    st.write("한국 주식 시장(코스닥)의 시가총액 정보와 네이버 금융에서 재무제표를 다운로드하여 로컬 파일 시스템에 저장합니다.")
+    st.subheader("⚙️ Local Financial Database Management")
+    st.write("Download KOSDAQ equity listings, daily stock price history, and quarterly financial reports from Naver Finance to save locally.")
     
     # Metadata status card
     listing_path = os.path.join(data_collector.DATA_DIR, "kosdaq_listing.csv")
@@ -473,36 +473,36 @@ with tab3:
         if os.path.exists(listing_path):
             size = os.path.getsize(listing_path) / 1024
             mtime = datetime.fromtimestamp(os.path.getmtime(listing_path)).strftime('%Y-%m-%d %H:%M:%S')
-            st.success(f"종목 목록 데이터: 존재함\n- 크기: {size:.1f} KB\n- 최종 갱신: {mtime}")
+            st.success(f"Stock Tickers listing: Active\n- Size: {size:.1f} KB\n- Last Modified: {mtime}")
         else:
-            st.error("종목 목록 데이터: 없음")
+            st.error("Stock Tickers listing: Missing")
             
     with col2:
         if os.path.exists(financials_path):
             size = os.path.getsize(financials_path) / (1024 * 1024)
             mtime = datetime.fromtimestamp(os.path.getmtime(financials_path)).strftime('%Y-%m-%d %H:%M:%S')
-            st.success(f"재무제표 데이터 캐시: 존재함\n- 크기: {size:.2f} MB\n- 최종 갱신: {mtime}")
+            st.success(f"Financials Cache: Active\n- Size: {size:.2f} MB\n- Last Modified: {mtime}")
         else:
-            st.error("재무제표 데이터 캐시: 없음")
+            st.error("Financials Cache: Missing")
             
     with col3:
         if os.path.exists(prices_path):
             size = os.path.getsize(prices_path) / (1024 * 1024)
             mtime = datetime.fromtimestamp(os.path.getmtime(prices_path)).strftime('%Y-%m-%d %H:%M:%S')
-            st.success(f"일별 주가 데이터 캐시: 존재함\n- 크기: {size:.2f} MB\n- 최종 갱신: {mtime}")
+            st.success(f"Daily Prices Cache: Active\n- Size: {size:.2f} MB\n- Last Modified: {mtime}")
         else:
-            st.error("일별 주가 데이터 캐시: 없음")
+            st.error("Daily Prices Cache: Missing")
             
     st.markdown("---")
-    st.subheader("🔄 데이터 캐시 수집 및 업데이트 수행")
+    st.subheader("🔄 Update/Rebuild Local Database")
     st.markdown("""
     > [!IMPORTANT]
-    > **수집 소요시간 안내**:
-    > 최초 데이터 수집 시 코스닥 1,600개 이상 기업의 주가 데이터(최근 2년치)와 분기별 매출액, 영업이익, 부채비율을 네이버 금융에서 가져오기 때문에 약 **1~2분 정도** 소요됩니다. 
-    > 안정적인 멀티스레드 병렬 처리가 진행되며 완료되면 로컬 디렉토리에 캐싱되어 다음부턴 0.1초 만에 화면이 로딩됩니다.
+    > **Information on Crawling Time**:
+    > Rebuilding the cache requests daily prices (last 2 years) and financial histories (revenue, operating profits, debt ratio, dividend yield) for 900+ KOSDAQ tickers.
+    > The process runs in parallel (30-40 threads) and takes about **1-2 minutes** to complete. Once saved, subsequent dashboard loads are sub-second.
     """)
     
-    if st.button("🔄 코스닥 전 종목 데이터 다운로드/업데이트 시작", type="primary"):
+    if st.button("🔄 Start Download/Update of all KOSDAQ stock data", type="primary"):
         # UI controls for updating
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -510,18 +510,18 @@ with tab3:
         def update_progress(current, total):
             pct = int(current / total * 100)
             progress_bar.progress(pct / 100.0)
-            status_text.text(f"금융 데이터 수집 진행 중... {current}/{total} 종목 ({pct}%)")
+            status_text.text(f"Collecting financial data... {current}/{total} tickers ({pct}%)")
             
         try:
-            with st.spinner("전 종목 크롤링 및 금융 분석 시뮬레이션 구축 중..."):
+            with st.spinner("Downloading tickers and rebuilding historical quant database..."):
                 # Run crawler
                 success = data_collector.collect_all_data(progress_callback=update_progress)
                 if success:
-                    st.success("🎉 성공적으로 모든 코스닥 데이터 갱신이 완료되었습니다! 탭을 이동하여 분석해 보세요.")
+                    st.success("🎉 Local database successfully cached! Navigate to other tabs to start screening.")
                     st.balloons()
                     # Force page rerun to reload updated data
                     st.rerun()
                 else:
-                    st.error("데이터 수집 중 오류가 발생했습니다. 네트워크 상태를 확인하세요.")
+                    st.error("An error occurred during data collection. Please check your network connection.")
         except Exception as e:
-            st.error(f"예외 발생: {e}")
+            st.error(f"Error occurred: {e}")

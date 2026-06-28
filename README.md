@@ -52,6 +52,10 @@ We are currently integrating Large Language Models (LLM) to transform this tool 
 - [x] **Task 1.1: Install `google-genai` SDK and verify local connection**
   - *Goal*: Successfully install the package and run a basic API communication script using `gemini-2.5-flash`.
   - *Status*: **Completed! (Installed `google-genai` and created `scratch/test_gemini.py` ✅)**
+  - *Study Log*: 
+    - **Unified SDK**: Transitioned to the modern `google-genai` package (v2.10.0+) representing the official client library, replacing the legacy `google-generativeai`.
+    - **Model Rationale**: Selected `gemini-2.5-flash` for its sub-second response times, excellent analytical summarization, and cost-efficiency.
+    - **Connection Test**: Implemented a connection test script (`scratch/test_gemini.py`) to verify communication and error handling (using `google.genai.errors.APIError`) using dynamic API key loading to prevent credentials leakage.
 - [ ] **Task 1.2: Design `ai_evaluator.py` module and prompt engineering**
   - *Goal*: Build prompt templates that convert numeric backtest metrics (CAGR, MDD, Sharpe) into a clear Markdown evaluation.
   - *Status*: Pending ⏳

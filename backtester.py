@@ -7,18 +7,18 @@ import data_collector
 
 def get_recent_quarter(date_str):
     """
-    특정 날짜 기준으로 이미 공시가 완료되어 활용할 수 있는 가장 최근 분기를 반환합니다.
-    - 1분기 실적(03): 5/15 공시 -> 5/15 ~ 8/14 사이 활용 가능
-    - 2분기 실적(06): 8/15 공시 -> 8/15 ~ 11/14 사이 활용 가능
-    - 3분기 실적(09): 11/15 공시 -> 11/15 ~ 익년 3/30 사이 활용 가능
-    - 4분기 실적(12): 3/31 공시 -> 3/31 ~ 5/14 사이 활용 가능
+    Returns the most recent quarterly financial report available (already public) as of the given date.
+    - Q1 earnings (03): Published May 15 -> Available May 15 ~ Aug 14
+    - Q2 earnings (06): Published Aug 15 -> Available Aug 15 ~ Nov 14
+    - Q3 earnings (09): Published Nov 15 -> Available Nov 15 ~ Mar 30 of the following year
+    - Q4 earnings (12): Published Mar 31 -> Available Mar 31 ~ May 14 of the following year
     """
     dt = pd.to_datetime(date_str)
     year = dt.year
     month = dt.month
     day = dt.day
     
-    # 공시일을 고려한 분기 판단
+    # Determine the quarterly report based on publication schedules
     if (month > 5 or (month == 5 and day >= 15)) and (month < 8 or (month == 8 and day < 15)):
         # 5/15 ~ 8/14 -> 1분기 (03)
         return f"{year}.03"
@@ -27,22 +27,22 @@ def get_recent_quarter(date_str):
         return f"{year}.06"
     elif (month > 11 or (month == 11 and day >= 15)) or (month < 3 or (month == 3 and day < 31)):
         # 11/15 ~ 3/30 -> 3분기 (09)
-        # 만약 1, 2월 혹은 3월 30일 이전이면 전년도 3분기 실적 적용
+        # If before March 31, apply Q3 performance of the previous year
         ref_year = year if month > 11 else year - 1
         return f"{ref_year}.09"
     else:
-        # 3/31 ~ 5/14 -> 4분기 (12)
-        # 3월 31일 이후부터 5월 14일 이전에는 전년도 4분기 실적 적용
+        # March 31 ~ May 14 -> Q4 (12)
+        # Apply Q4 performance of the previous year
         return f"{year - 1}.12"
 
 def get_previous_quarters(quarter_str, n=3):
-    """특정 분기 기준으로 이전 N개의 분기 리스트를 구합니다 (예: '2024.03' -> ['2023.09', '2023.12', '2024.03'])"""
+    """Returns a list of N consecutive quarters ending at the given quarter (e.g., '2024.03' -> ['2023.09', '2023.12', '2024.03'])"""
     year, q = map(int, quarter_str.split('.'))
     
     quarters = []
     for _ in range(n):
         quarters.append(f"{year}.{q:02d}")
-        # 이전 분기로 이동
+        # Shift to the previous quarter
         if q == 3:
             q = 12
             year -= 1
@@ -58,15 +58,15 @@ def get_previous_quarters(quarter_str, n=3):
 def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, consecutive_profitable_quarters=3,
                   min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0):
     """
-    특정 날짜 기준으로 조건에 맞는 종목들을 필터링합니다.
-    - min_marcap, max_marcap: 원 단위 시가총액 필터 범위
-    - min_div_yield: 최소 배당수익률 (%)
+    Filters stocks based on the specified financial criteria as of a given date.
+    - min_marcap, max_marcap: Market cap threshold range in KRW
+    - min_div_yield: Minimum dividend yield (%)
     """
     listing = data["listing"]
     financials = data["financials"]
     prices = data["prices"]
     
-    # 1. 대상 날짜에 가격 데이터가 존재하는 종목들만 선별 (거래정지 등 제외)
+    # 1. Select stocks with price data on the target date (excluding suspended trading, etc.)
     date_str_formatted = pd.to_datetime(date_str).strftime("%Y-%m-%d")
     
     active_stocks = []
@@ -74,7 +74,7 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
         if code in prices and date_str_formatted in prices[code]:
             active_stocks.append(code)
             
-    # 현재 날짜 기준으로 이용 가능한 재무 정보 식별
+    # Identify available financial information based on the current date
     recent_q = get_recent_quarter(date_str)
     prev_qs = get_previous_quarters(recent_q, consecutive_profitable_quarters)
     
@@ -92,17 +92,17 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
         if not ("revenue" in fin_data and "operating_profit" in fin_data and "debt_ratio" in fin_data):
             continue
             
-        # 1. 부채비율 검사 (최근 분기)
+        # 1. Check debt ratio (most recent quarter)
         try:
             q_idx = dates.index(recent_q)
             debt = fin_data["debt_ratio"][q_idx]
             if debt is None or debt >= debt_threshold:
                 continue
         except (ValueError, IndexError):
-            # 최근 분기 데이터가 존재하지 않는 경우 제외
+            # Exclude if recent quarter data is not available
             continue
             
-        # 2. 최근 N개 분기 영업이익 연속 흑자 여부 검사
+        # 2. Check for consecutive profitable quarters
         profitable = True
         for pq in prev_qs:
             try:
@@ -118,8 +118,8 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
         if not profitable:
             continue
             
-        # 3. PSR 계산
-        # 매출액 구하기: 최근 분기를 포함해 직전 4분기 매출액의 합산 (TTM)
+        # 3. Calculate PSR
+        # Get TTM Revenue: Sum of revenue over the last 4 quarters including the recent quarter
         ttm_revenue = 0
         revenue_ok = True
         revenue_qs = get_previous_quarters(recent_q, 4)
@@ -137,9 +137,9 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
                 revenue_ok = False
                 break
                 
-        # 만약 분기 매출 데이터가 누락되었을 시, 연간 매출 데이터를 보조로 사용
+        # Fallback to annual revenue if quarterly data is missing or incomplete
         if not revenue_ok or ttm_revenue == 0:
-            # 최근 연간 매출액 사용 시도
+            # Try using recent annual revenue
             recent_year = recent_q.split('.')[0]
             annual_q = f"{recent_year}.12"
             try:
@@ -149,7 +149,7 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
                     ttm_revenue = rev
                     revenue_ok = True
             except (ValueError, IndexError):
-                # 전년도 연간 매출 사용 시도
+                # Try using the previous year's annual revenue
                 prev_year = str(int(recent_year) - 1)
                 prev_annual_q = f"{prev_year}.12"
                 try:
@@ -164,16 +164,16 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
         if not revenue_ok or ttm_revenue <= 0:
             continue
             
-        # 시가총액 계산: 해당 날짜의 종가 * 상장주식수
+        # Calculate market cap: Close price * total shares
         close_price = prices[code][date_str_formatted]
         stocks_count = listing[listing['code'] == code]['stocks'].values[0]
         market_cap = close_price * stocks_count
         
-        # 시가총액 필터링 (원 단위 비교)
+        # Filter by market cap (KRW)
         if not (min_marcap <= market_cap <= max_marcap):
             continue
             
-        # 배당수익률 추출: 결산(연간) 기준 가장 최근 배당수익률(dividend_yield)을 매칭합니다.
+        # Extract dividend yield: Match the most recent annual fiscal dividend yield
         div_yield = 0.0
         if "dividend_yield" in fin_data:
             recent_year = recent_q.split('.')[0]
@@ -185,7 +185,7 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
                 if div_val is not None:
                     div_yield = div_val
             except (ValueError, IndexError):
-                # 전년도 결산 데이터 사용 시도
+                # Try using previous fiscal year's annual dividend yield
                 prev_annual_q = f"{int(recent_year)-1}.12"
                 try:
                     paq_idx = dates.index(prev_annual_q)
@@ -195,13 +195,12 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
                 except (ValueError, IndexError):
                     pass
                     
-        # 최소 배당수익률 필터링
+        # Filter by minimum dividend yield
         if div_yield < min_div_yield:
             continue
             
-        # PSR = 시가총액 / (매출액 * 1억 - 네이버 재무제표 단위는 대개 억 원이므로 보정)
-        # 네이버 금융의 매출액 표는 기본이 억 원 단위입니다.
-        # 시가총액(원) / (매출액(억원) * 10^8)
+        # PSR = Market Cap / (Revenue * 10^8) - Naver Finance revenue is usually in 100M KRW
+        # Convert revenue to KRW and calculate PSR
         revenue_won = ttm_revenue * 100000000
         psr = market_cap / revenue_won
         
@@ -223,29 +222,29 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                  consecutive_profitable_quarters=3, portfolio_size=10, rebalance_freq="Q", initial_capital=100000000,
                  min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0, sort_by="psr"):
     """
-    퀀트 투자 전략 백테스트를 수행합니다.
-    - rebalance_freq: "Q" (분기별), "M" (월별), "H" (반기별), "Y" (연별)
-    - min_marcap, max_marcap: 원 단위 시가총액 필터 범위
-    - min_div_yield: 최소 배당수익률 (%)
-    - sort_by: "psr" (PSR 오름차순), "marcap_asc" (시총 오름차순), "marcap_desc" (시총 내림차순), "div_desc" (배당률 내림차순)
+    Simulates a quantitative investment strategy backtest.
+    - rebalance_freq: "Q" (Quarterly), "M" (Monthly), "H" (Semi-Annually), "Y" (Annually)
+    - min_marcap, max_marcap: Market cap threshold range in KRW
+    - min_div_yield: Minimum dividend yield (%)
+    - sort_by: "psr" (PSR Ascending), "marcap_asc" (Small-Cap Ascending), "marcap_desc" (Large-Cap Descending), "div_desc" (Dividend yield Descending)
     """
     prices = data["prices"]
     df_index = data["index"]
     
-    # 백테스트 기간 내에 존재하는 모든 실제 영업일 날짜 목록 구하기
-    # 코스닥 지수의 인덱스 날짜를 사용합니다.
+    # Retrieve list of actual business trading days within backtest period
+    # Use KOSDAQ index dates as target days
     all_dates = df_index.loc[start_date_str:end_date_str].index.strftime("%Y-%m-%d").tolist()
     
     if not all_dates:
         return None
         
-    # 리밸런싱 날짜 리스트 결정
+    # Define rebalancing schedule dates
     rebalance_dates = []
     
-    # 시작 날짜는 무조건 리밸런싱 수행
+    # Force rebalancing on the initial day
     rebalance_dates.append(all_dates[0])
     
-    # 주기별 리밸런싱 날짜 식별
+    # Identify periodic rebalancing dates
     current_dt = pd.to_datetime(all_dates[0])
     end_dt = pd.to_datetime(all_dates[-1])
     
@@ -265,34 +264,34 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
         if temp_dt >= end_dt:
             break
             
-        # 해당 날짜에 가장 가까운 실제 영업일 찾기
+        # Find the closest actual trading day to the target date
         target_str = temp_dt.strftime("%Y-%m-%d")
         if target_str in all_dates:
             rebalance_dates.append(target_str)
         else:
-            # 영업일이 아니면 이후 날짜 중 가장 가까운 영업일 선택
+            # If not a trading day, find the next closest trading day
             future_dates = [d for d in all_dates if d >= target_str]
             if future_dates:
                 rebalance_dates.append(future_dates[0])
                 
-    # 중복 제거 및 정렬
+    # Remove duplicates and sort
     rebalance_dates = sorted(list(set(rebalance_dates)))
     
-    # 시뮬레이션 변수
+    # Simulation parameters
     cash = initial_capital
     portfolio = {}  # {code: {"shares": n, "buy_price": p}}
     portfolio_value_history = []
     
-    # 리밸런싱 주기별 매매 기록 저장
+    # Store trade logs for each rebalancing period
     trade_logs = []
     
-    # 일별 시뮬레이션
+    # Daily portfolio status simulation variables
     current_portfolio_codes = []
     
     for date_idx, today in enumerate(all_dates):
-        # 1. 리밸런싱 데이인 경우 리밸런싱 수행
+        # 1. Rebalance on scheduled rebalancing days
         if today in rebalance_dates:
-            # 신규 종목 스크리닝을 먼저 시도하여 살 수 있는 우량 저평가주가 있는지 파악합니다.
+            # Perform screening first to see if any stocks meet the criteria
             df_screened = screen_stocks(
                 today, data, 
                 psr_threshold=psr_threshold, 
@@ -303,22 +302,22 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                 min_div_yield=min_div_yield
             )
             
-            # 조건 만족하는 신규 종목이 1개라도 존재하는 경우에만 포트폴리오 리밸런싱(교체)을 진행합니다.
-            # 만약 조건에 맞는 종목이 0개라면 기존 포트폴리오를 매도하지 않고 그대로 유지(Hold)합니다.
+            # Only rebalance if at least one stock satisfies the criteria.
+            # If no stocks qualify, hold the existing portfolio instead of liquidating to cash.
             if not df_screened.empty:
-                # 기존 포트폴리오 전량 매도
+                # Sell existing holdings
                 if portfolio:
                     sell_log = []
                     for code, info in list(portfolio.items()):
-                        # 오늘 종가 확인
+                        # Check current close price
                         if today in prices[code]:
                             today_close = prices[code][today]
                         else:
-                            # 오늘 가격이 없으면 직전 가치 유지
+                            # Use last known price if trading is inactive
                             today_close = info["buy_price"]
                             
                         sell_value = info["shares"] * today_close
-                        # 수수료 및 거래세 적용 (매도 시 0.2% 가정)
+                        # Deduct transaction fees and taxes (0.2%)
                         sell_value_after_tax = sell_value * 0.998
                         cash += sell_value_after_tax
                         
@@ -334,7 +333,7 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                     trade_logs.extend(sell_log)
                     portfolio.clear()
                 
-                # 지정 정렬 기준에 맞춰 상위 K개 선택
+                # Select top K stocks based on sort selection
                 if sort_by == "psr":
                     df_selected = df_screened.sort_values(by="psr").head(portfolio_size)
                 elif sort_by == "marcap_asc":
@@ -348,14 +347,14 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                     
                 selected_codes = df_selected['code'].tolist()
                 
-                # 가용 현금을 균등 배분하여 매수
+                # Allocate available cash equally to purchase new candidates
                 if selected_codes:
                     allocation = cash / len(selected_codes)
                     buy_log = []
                     for code in selected_codes:
                         row = df_selected[df_selected['code'] == code].iloc[0]
                         price = row['close']
-                        # 매수 수수료 반영 (0.015% 가정)
+                        # Deduct buying commission (0.015%)
                         allocation_net = allocation / 1.00015
                         shares = int(allocation_net / price)
                         
@@ -381,7 +380,7 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                     
             current_portfolio_codes = list(portfolio.keys())
             
-        # 2. 일별 포트폴리오 가치 계산
+        # 2. Calculate daily portfolio valuation
         portfolio_stock_value = 0
         for code, info in portfolio.items():
             if today in prices[code]:
@@ -403,10 +402,10 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
     df_history["date"] = pd.to_datetime(df_history["date"])
     df_history.set_index("date", inplace=True)
     
-    # 벤치마크 (코스닥 지수) 수익률 병합
+    # Merge Benchmark (KOSDAQ Index) returns
     df_index_subset = df_index.loc[start_date_str:end_date_str].copy()
     
-    # 누적 수익률 계산
+    # Calculate cumulative returns
     df_history["portfolio_return"] = (df_history["portfolio_value"] / initial_capital - 1) * 100
     
     first_index_val = df_index_subset.iloc[0]['close']
@@ -415,7 +414,7 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
     df_merged = df_history.join(df_index_subset[['close', 'index_return']], how="left")
     df_merged.rename(columns={'close': 'index_close'}, inplace=True)
     
-    # 성과 지표 산출
+    # Calculate performance metrics
     total_days = (df_merged.index[-1] - df_merged.index[0]).days
     final_value = df_merged["portfolio_value"].iloc[-1]
     
@@ -430,7 +429,7 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
     # Sharpe Ratio
     df_merged["portfolio_daily_ret"] = df_merged["portfolio_value"].pct_change()
     daily_vol = df_merged["portfolio_daily_ret"].std()
-    # 일별 평균 수익률 연율화 / 변동성 연율화
+    # Annualized return and volatility
     mean_daily_ret = df_merged["portfolio_daily_ret"].mean()
     sharpe = (mean_daily_ret / daily_vol * np.sqrt(252)) if daily_vol > 0 else 0
     
@@ -460,7 +459,7 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
     return df_merged, metrics, pd.DataFrame(trade_logs)
 
 if __name__ == "__main__":
-    # 백테스터 단독 작동 확인용
+    # Self-diagnostic test execution
     print("Loading cache to test backtester...")
     data = data_collector.load_cached_data()
     if data:
@@ -481,7 +480,7 @@ if __name__ == "__main__":
 
 def get_available_backtest_range(data):
     """
-    캐시된 재무 데이터를 분석하여 백테스트가 가능한 안전한 최초 시작일과 최신 종료일을 구합니다.
+    Analyzes cached financial data to calculate the safe start and end dates for the backtest.
     """
     financials = data.get("financials", {})
     if not financials:
@@ -498,13 +497,13 @@ def get_available_backtest_range(data):
     if not valid_qs:
         return None, None
         
-    # 가용한 가장 과거 분기를 기준으로 공시일 산정
+    # Determine publication date of the earliest available quarter
     first_q = valid_qs[0]
     year_str, q_str = first_q.split('.')
     year = int(year_str)
     q = int(q_str)
     
-    # 1분기(3): 5/15 공시, 2분기(6): 8/15 공시, 3분기(9): 11/15 공시, 4분기(12): 익년 3/31 공시
+    # Q1(3): May 15, Q2(6): Aug 15, Q3(9): Nov 15, Q4(12): Mar 31 of next year
     if q == 3:
         safe_start_date = datetime(year, 5, 16)
     elif q == 6:
