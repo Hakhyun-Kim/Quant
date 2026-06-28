@@ -1,6 +1,6 @@
-# KOSDAQ Quant Screener & Backtester Walkthrough
+# KRX (KOSPI & KOSDAQ) Quant Screener & Backtester Walkthrough
 
-We have successfully designed and built a premium, state-of-the-art **KOSDAQ Quant Screener & Backtester** dashboard. It screens low-PSR stocks combined with earnings stability and financial safety, verifies the strategy historically, and generates intuitive metrics.
+We have successfully designed and built a premium, state-of-the-art **KRX (KOSPI & KOSDAQ) Quant Screener & Backtester** dashboard. It screens low-PSR stocks combined with earnings stability and financial safety, verifies the strategy historically, and generates intuitive metrics.
 
 ---
 
