@@ -56,12 +56,12 @@ We are currently integrating Large Language Models (LLM) to transform this tool 
     - **Unified SDK**: Transitioned to the modern `google-genai` package (v2.10.0+) representing the official client library, replacing the legacy `google-generativeai`.
     - **Model Rationale**: Selected `gemini-2.5-flash` for its sub-second response times, excellent analytical summarization, and cost-efficiency.
     - **Connection Test**: Implemented a connection test script (`scratch/test_gemini.py`) to verify communication and error handling (using `google.genai.errors.APIError`) using dynamic API key loading to prevent credentials leakage.
-- [ ] **Task 1.2: Design `ai_evaluator.py` module and prompt engineering**
+- [x] **Task 1.2: Design `ai_evaluator.py` module and prompt engineering**
   - *Goal*: Build prompt templates that convert numeric backtest metrics (CAGR, MDD, Sharpe) into a clear Markdown evaluation.
-  - *Status*: Pending ⏳
-- [ ] **Task 1.3: Connect Streamlit UI and secure API key session state**
+  - *Status*: **Completed! (Designed prompt templates, strict system instructions, and real-time news crawling context integration ✅)**
+- [x] **Task 1.3: Connect Streamlit UI and secure API key session state**
   - *Goal*: Add a secure API password field in the sidebar to prevent key leakage and handle rendering states.
-  - *Status*: Pending ⏳
+  - *Status*: **Completed! (Secure sidebar key capture and the new interactive "💬 AI Stock Assistant" tab added ✅)**
 - [ ] **Task 1.4: End-to-end local validation and GitHub release**
   - *Goal*: Verify the Markdown output under the Plotly chart and push to the remote repository.
   - *Status*: Pending ⏳

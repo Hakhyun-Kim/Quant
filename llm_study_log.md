@@ -11,10 +11,10 @@ This log tracks our progress step-by-step as we integrate LLM features into our 
   - **Status**: **Completed! (Installed `google-genai` 2.10.0 & created connection script `scratch/test_gemini.py` [SUCCESS])**
 - **Task 1.2: Design `ai_evaluator.py` module and write prompt templates**
   - **Learning Objectives**: Prompt engineering (System Instructions, Few-shot prompting), transforming quantitative metrics into narrative contexts.
-  - **Status**: Pending...
+  - **Status**: **Completed! (Designed neutral prompt templates and system instructions for strategy analysis and stock queries [SUCCESS])**
 - **Task 1.3: Connect Streamlit UI and manage secure session state (`app.py`)**
   - **Learning Objectives**: Securing API keys via user input in Streamlit, keeping keys in session memory (`st.session_state`), and displaying spinner indicators.
-  - **Status**: Pending...
+  - **Status**: **Completed! (API key captured securely in RAM, Strategy Report block and AI Stock Assistant tab added [SUCCESS])**
 - **Task 1.4: End-to-end local validation and GitHub commit**
   - **Learning Objectives**: Running backtests, generating markdown reports on UI, and structuring commits.
   - **Status**: Pending...
@@ -36,3 +36,13 @@ This log tracks our progress step-by-step as we integrate LLM features into our 
   )
   print(response.text)
   ```
+
+### Task 1.2: Prompt Engineering & Persona Constraints
+* **System Instructions**: Implemented strict persona definitions in the Gemini request configuration (`types.GenerateContentConfig(system_instruction=...)`). This enforces an objective, analytical tone, preventing the model from giving financial/investment recommendations (buy/sell triggers) to maintain regulatory compliance.
+* **Prompt Structuring**: Structured quantitative metrics (CAGR, MDD, Sharpe) clearly using labels. Provided a consolidated string of final holdings so the model has proper qualitative target stock context.
+* **Multi-Language Adaptability**: Structured instructions so the AI identifies the language of the user's question and responds accordingly.
+
+### Task 1.3: Secure Session State & Streamlit Tab Navigation
+* **st.session_state**: Leveraged Streamlit's temporary memory dictionary to capture credentials securely in RAM. Storing the key dynamically via `st.sidebar.text_input(type="password")` ensures it never leaks to disk, configuration files, or git logs.
+* **State Clearing on Reload**: Implemented a clearing hook (`del st.session_state["ai_report"]`) when a new backtest is triggered, preventing stale strategy reports from displaying for new parameter sets.
+* **On-Demand Crawling**: Implemented a Naver News headlines scraper that integrates the crawled headlines and local financials cache directly into the Gemini prompt, offering real-time qualitative context for stock analysis.

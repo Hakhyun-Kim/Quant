@@ -10,6 +10,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import data_collector
 import backtester
+import ai_evaluator
 
 # Page Setting (Wide layout and title)
 st.set_page_config(
@@ -188,9 +189,31 @@ end_date = st.sidebar.date_input(
 if start_date >= end_date:
     st.sidebar.error("Start date must be before end date.")
 
+# 5. LLM API Key Setting
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔑 Google Gemini API")
+
+default_api_key = os.environ.get("GEMINI_API_KEY", "")
+if "gemini_api_key" not in st.session_state and default_api_key:
+    st.session_state["gemini_api_key"] = default_api_key
+
+gemini_key_input = st.sidebar.text_input(
+    "Gemini API Key",
+    type="password",
+    value=st.session_state.get("gemini_api_key", ""),
+    help="Enter your Google AI Studio Gemini API Key. It remains secure in memory and is never saved to disk."
+)
+if gemini_key_input:
+    st.session_state["gemini_api_key"] = gemini_key_input
+
 
 # ----------------- TABS CREATION -----------------
-tab1, tab2, tab3 = st.tabs(["📊 Real-time Screener", "📈 Backtest Performance", "⚙️ Local Database Cache"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Real-time Screener", 
+    "📈 Backtest Performance", 
+    "⚙️ Local Database Cache",
+    "💬 AI Stock Assistant"
+])
 
 # If data is not cached, force user to download first
 if cached_data is None:
@@ -198,6 +221,8 @@ if cached_data is None:
         st.warning("⚠️ No cached stock price or financial data found. Please run the collector in the **Local Database Cache** tab first.")
     with tab2:
         st.warning("⚠️ Caching is required before running the backtest. Please run the collector in the **Local Database Cache** tab first.")
+    with tab4:
+        st.warning("⚠️ Caching is required before using the AI Stock Assistant. Please run the collector in the **Local Database Cache** tab first.")
 else:
     # ----------------- TAB 1: SCREENER -----------------
     with tab1:
@@ -332,6 +357,9 @@ else:
         
         # Trigger backtest button
         if st.button("🚀 Run Backtest", type="primary", use_container_width=True):
+            # Clear old AI report on new backtest run
+            if "ai_report" in st.session_state:
+                del st.session_state["ai_report"]
             with st.spinner("Simulating portfolio backtest..."):
                 start_str = start_date.strftime("%Y-%m-%d")
                 end_str = end_date.strftime("%Y-%m-%d")
@@ -455,6 +483,29 @@ else:
                         - **Final Cash Balance**: {int(df_hist['cash'].iloc[-1]):,} KRW
                         - **Final Stock Assets Value**: {int(df_hist['stock_value'].iloc[-1]):,} KRW
                         """)
+                    
+                    # 4. AI Strategy Evaluation Report
+                    st.markdown("---")
+                    st.subheader("🤖 AI Strategy Evaluation Report")
+                    
+                    api_key = st.session_state.get("gemini_api_key", "")
+                    if not api_key:
+                        st.info("💡 Enter your Gemini API Key in the sidebar to enable AI Strategy Evaluation reports.")
+                    else:
+                        final_holdings = df_hist['holdings'].iloc[-1] if not df_hist.empty else "None"
+                        
+                        if st.button("🤖 Generate AI Analysis Report", key="btn_gen_ai_report", use_container_width=True):
+                            with st.spinner("Analyzing backtest results and generating qualitative report..."):
+                                try:
+                                    holdings_desc = f"Latest Portfolio Holdings: {final_holdings}"
+                                    import ai_evaluator
+                                    report_text = ai_evaluator.generate_strategy_report(metrics, holdings_desc, api_key)
+                                    st.session_state["ai_report"] = report_text
+                                except Exception as e:
+                                    st.error(f"Failed to generate report: {e}")
+                                    
+                        if "ai_report" in st.session_state:
+                            st.markdown(st.session_state["ai_report"])
 
 
 # ----------------- TAB 3: DATA MANAGEMENT -----------------
@@ -525,3 +576,112 @@ with tab3:
                     st.error("An error occurred during data collection. Please check your network connection.")
         except Exception as e:
             st.error(f"Error occurred: {e}")
+
+    # ----------------- TAB 4: AI STOCK ASSISTANT -----------------
+    with tab4:
+        st.subheader("💬 AI Stock Assistant")
+        st.write("Select a stock candidate from the screened list to view its financial snapshot, recent news headlines, and ask questions.")
+        
+        api_key = st.session_state.get("gemini_api_key", "")
+        if not api_key:
+            st.info("💡 Enter your Gemini API Key in the sidebar to enable the AI Stock Assistant.")
+        else:
+            # 1. Run screening for the latest date to get the candidates
+            latest_date_str = cached_data["index"].index[-1].strftime("%Y-%m-%d")
+            df_candidates = backtester.screen_stocks(
+                latest_date_str, cached_data,
+                psr_threshold=psr_threshold,
+                debt_threshold=debt_threshold,
+                consecutive_profitable_quarters=consecutive_profitable_quarters,
+                min_marcap=min_marcap_won,
+                max_marcap=max_marcap_won,
+                min_div_yield=min_div_input
+            )
+            
+            if df_candidates.empty:
+                st.warning("No stock candidates are currently screened under your parameters. Please loosen the filter parameters in the sidebar to find candidates.")
+            else:
+                # Select stock name dropdown
+                stock_names = df_candidates['name'].tolist()
+                selected_stock_name = st.selectbox("Select Stock Candidate", options=stock_names)
+                
+                # Get stock details
+                stock_row = df_candidates[df_candidates['name'] == selected_stock_name].iloc[0]
+                stock_code = stock_row['code']
+                
+                # Display Financial Snapshot Card
+                st.markdown("### 📊 Financial Snapshot")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("PSR", f"{stock_row['psr']:.3f}")
+                col2.metric("Debt Ratio", f"{stock_row['debt_ratio']:.1f}%")
+                col3.metric("Dividend Yield", f"{stock_row['div_yield']:.2f}%")
+                col4.metric("Market Cap", f"{int(stock_row['marcap']/100000000):,}B KRW")
+                
+                # Retrieve News button
+                st.markdown("### 📰 Recent News & AI Chat")
+                
+                # We store news and answers in session state keyed by stock_code to persist state during chat
+                if "current_stock_code" not in st.session_state or st.session_state["current_stock_code"] != stock_code:
+                    st.session_state["current_stock_code"] = stock_code
+                    st.session_state["news_headlines"] = []
+                    if "chat_history" in st.session_state:
+                        del st.session_state["chat_history"]
+                        
+                if st.button("📰 Retrieve Recent News", key="btn_retrieve_news"):
+                    with st.spinner("Crawling Naver News search for recent headlines..."):
+                        import ai_evaluator
+                        st.session_state["news_headlines"] = ai_evaluator.crawl_news_headlines(selected_stock_name)
+                        
+                # Render news headlines
+                news_list = st.session_state.get("news_headlines", [])
+                if news_list:
+                    st.write("**Top 5 Recent News Headlines:**")
+                    for idx, headline in enumerate(news_list):
+                        st.write(f"{idx+1}. {headline}")
+                else:
+                    st.info("Click 'Retrieve Recent News' to load headlines.")
+                    
+                # Chat Input
+                st.markdown("---")
+                st.write("**Ask a Question about this Stock:**")
+                
+                # Predefined Quick Buttons
+                q_col1, q_col2 = st.columns(2)
+                quick_query = ""
+                if q_col1.button("이 기업 지금 사면 어떤지? (Evaluation)", key="btn_q1", use_container_width=True):
+                    quick_query = "이 기업 지금 사면 어떤지? 재무와 밸류에이션 관점에서 핵심 리스크와 장점을 요약해줘."
+                if q_col2.button("뉴스 이슈 및 오너 리스크 체크 (News & Owner Risk)", key="btn_q2", use_container_width=True):
+                    quick_query = "뉴스 제목에 나온 주요 키워드와 오너 리스크, 혹은 최근 부정적인 핫이슈가 존재하는지 체크해줘."
+                    
+                user_query = st.text_input("Your Question", value=quick_query, placeholder="e.g., 이 기업 부채상황과 성장성은 괜찮은가요?")
+                
+                if st.button("🤖 Ask AI Assistant", key="btn_ask_ai", type="primary"):
+                    if not user_query:
+                        st.warning("Please enter a question or click a quick question button.")
+                    else:
+                        with st.spinner("AI is analyzing financials and news to answer your query..."):
+                            try:
+                                import ai_evaluator
+                                # Compile financials context
+                                financials = {
+                                    "psr": stock_row['psr'],
+                                    "debt_ratio": stock_row['debt_ratio'],
+                                    "div_yield": stock_row['div_yield'],
+                                    "consecutive_profitable_quarters": consecutive_profitable_quarters
+                                }
+                                
+                                # If news is empty, try crawling it on the fly
+                                if not news_list:
+                                    news_list = ai_evaluator.crawl_news_headlines(selected_stock_name)
+                                    st.session_state["news_headlines"] = news_list
+                                    
+                                response_text = ai_evaluator.answer_stock_query(
+                                    selected_stock_name, stock_code, financials, news_list, user_query, api_key
+                                )
+                                st.session_state["chat_history"] = response_text
+                            except Exception as e:
+                                st.error(f"Failed to get AI answer: {e}")
+                                
+                if "chat_history" in st.session_state:
+                    st.markdown("### 🤖 AI Response:")
+                    st.markdown(st.session_state["chat_history"])
