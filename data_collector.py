@@ -13,16 +13,17 @@ def ensure_data_dir():
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
 
-def get_kosdaq_listing():
-    """Fetch the KOSDAQ stock listing using FinanceDataReader."""
+def get_krx_listing():
+    """Fetch KOSPI and KOSDAQ stock listings using FinanceDataReader, filtering out KONEX."""
     try:
-        df = fdr.StockListing("KOSDAQ")
-        # 필요한 컬럼만 추출
-        df_filtered = df[['Code', 'Name', 'Marcap', 'Close', 'Stocks']]
-        df_filtered.columns = ['code', 'name', 'marcap', 'close', 'stocks']
+        df = fdr.StockListing("KRX")
+        # Filter to KOSPI and KOSDAQ only
+        df = df[df['Market'].isin(['KOSPI', 'KOSDAQ'])]
+        df_filtered = df[['Code', 'Name', 'Market', 'Marcap', 'Close', 'Stocks']]
+        df_filtered.columns = ['code', 'name', 'market', 'marcap', 'close', 'stocks']
         return df_filtered
     except Exception as e:
-        print(f"Error fetching KOSDAQ listing: {e}")
+        print(f"Error fetching KRX listing: {e}")
         return pd.DataFrame()
 
 def crawl_financial_data(code):
@@ -100,29 +101,32 @@ def crawl_financial_data(code):
         return None
 
 def collect_all_data(progress_callback=None):
-    """Collect and cache daily price and financial statement data for all KOSDAQ listings locally."""
+    """Collect and cache daily price and financial statement data for all KRX (KOSPI & KOSDAQ) listings locally."""
     ensure_data_dir()
     start_time = time.time()
     
-    print("1. Collecting KOSDAQ stock listing...")
-    df_listing = get_kosdaq_listing()
+    print("1. Collecting KRX (KOSPI & KOSDAQ) stock listing...")
+    df_listing = get_krx_listing()
     if df_listing.empty:
         print("Failed to fetch stock listing.")
         return False
         
-    # 종목 리스트 저장
-    listing_path = os.path.join(DATA_DIR, "kosdaq_listing.csv")
+    # Save listing
+    listing_path = os.path.join(DATA_DIR, "krx_listing.csv")
     df_listing.to_csv(listing_path, index=False, encoding="utf-8-sig")
     
-    # 2. Collect KOSDAQ Index
-    print("2. Collecting KOSDAQ index data...")
+    # 2. Collect KOSPI and KOSDAQ Index data
+    print("2. Collecting KOSPI & KOSDAQ index data...")
     try:
-        df_index = fdr.DataReader("KQ11", "2024-01-01")
-        df_index = df_index[['Close']].rename(columns={'Close': 'close'})
-        index_path = os.path.join(DATA_DIR, "kosdaq_index.csv")
-        df_index.to_csv(index_path, encoding="utf-8-sig")
+        df_kospi = fdr.DataReader("KS11", "2024-01-01")
+        df_kospi = df_kospi[['Close']].rename(columns={'Close': 'close'})
+        df_kospi.to_csv(os.path.join(DATA_DIR, "kospi_index.csv"), encoding="utf-8-sig")
+        
+        df_kosdaq = fdr.DataReader("KQ11", "2024-01-01")
+        df_kosdaq = df_kosdaq[['Close']].rename(columns={'Close': 'close'})
+        df_kosdaq.to_csv(os.path.join(DATA_DIR, "kosdaq_index.csv"), encoding="utf-8-sig")
     except Exception as e:
-        print(f"Failed to collect KOSDAQ index: {e}")
+        print(f"Failed to collect indices: {e}")
         
     # 3. Crawl individual financial statements in parallel
     tickers = df_listing['code'].tolist()
@@ -152,7 +156,7 @@ def collect_all_data(progress_callback=None):
     print(f"Financial data collection complete (Success: {len(financials_cache)}/{total_tickers} tickers)")
                 
     # 재무 데이터 저장
-    financials_path = os.path.join(DATA_DIR, "kosdaq_financials.json")
+    financials_path = os.path.join(DATA_DIR, "krx_financials.json")
     with open(financials_path, "w", encoding="utf-8") as f:
         json.dump(financials_cache, f, ensure_ascii=False, indent=4)
         
@@ -193,7 +197,7 @@ def collect_all_data(progress_callback=None):
     print(f"Price data collection complete (Success: {len(prices_cache)}/{total_tickers} tickers)")
                 
     # 주가 데이터 저장
-    prices_path = os.path.join(DATA_DIR, "kosdaq_prices.json")
+    prices_path = os.path.join(DATA_DIR, "krx_prices.json")
     with open(prices_path, "w", encoding="utf-8") as f:
         json.dump(prices_cache, f, ensure_ascii=False)
         
@@ -206,14 +210,15 @@ def load_cached_data():
     """Load cached local data from the file system."""
     ensure_data_dir()
     
-    listing_path = os.path.join(DATA_DIR, "kosdaq_listing.csv")
-    financials_path = os.path.join(DATA_DIR, "kosdaq_financials.json")
-    prices_path = os.path.join(DATA_DIR, "kosdaq_prices.json")
-    index_path = os.path.join(DATA_DIR, "kosdaq_index.csv")
+    listing_path = os.path.join(DATA_DIR, "krx_listing.csv")
+    financials_path = os.path.join(DATA_DIR, "krx_financials.json")
+    prices_path = os.path.join(DATA_DIR, "krx_prices.json")
+    kospi_index_path = os.path.join(DATA_DIR, "kospi_index.csv")
+    kosdaq_index_path = os.path.join(DATA_DIR, "kosdaq_index.csv")
     
     # Verify if cache files exist
     if not (os.path.exists(listing_path) and os.path.exists(financials_path) and 
-            os.path.exists(prices_path) and os.path.exists(index_path)):
+            os.path.exists(prices_path) and os.path.exists(kospi_index_path) and os.path.exists(kosdaq_index_path)):
         return None
         
     try:
@@ -225,14 +230,18 @@ def load_cached_data():
         with open(prices_path, "r", encoding="utf-8") as f:
             prices = json.load(f)
             
-        df_index = pd.read_csv(index_path, index_col=0)
-        df_index.index = pd.to_datetime(df_index.index)
+        df_kospi = pd.read_csv(kospi_index_path, index_col=0)
+        df_kospi.index = pd.to_datetime(df_kospi.index)
+        
+        df_kosdaq = pd.read_csv(kosdaq_index_path, index_col=0)
+        df_kosdaq.index = pd.to_datetime(df_kosdaq.index)
         
         return {
             "listing": df_listing,
             "financials": financials,
             "prices": prices,
-            "index": df_index
+            "kospi_index": df_kospi,
+            "kosdaq_index": df_kosdaq
         }
     except Exception as e:
         print(f"Error loading cached data: {e}")

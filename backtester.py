@@ -56,15 +56,22 @@ def get_previous_quarters(quarter_str, n=3):
     return list(reversed(quarters))
 
 def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, consecutive_profitable_quarters=3,
-                  min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0):
+                  min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0, target_market="Both"):
     """
     Filters stocks based on the specified financial criteria as of a given date.
     - min_marcap, max_marcap: Market cap threshold range in KRW
     - min_div_yield: Minimum dividend yield (%)
+    - target_market: Target market classification ('KOSPI', 'KOSDAQ', or 'Both')
     """
     listing = data["listing"]
     financials = data["financials"]
     prices = data["prices"]
+    
+    # Filter listing by target market (KOSPI, KOSDAQ, or Both)
+    if target_market == "KOSPI":
+        listing = listing[listing['market'] == 'KOSPI']
+    elif target_market == "KOSDAQ":
+        listing = listing[listing['market'] == 'KOSDAQ']
     
     # 1. Select stocks with price data on the target date (excluding suspended trading, etc.)
     date_str_formatted = pd.to_datetime(date_str).strftime("%Y-%m-%d")
@@ -220,19 +227,25 @@ def screen_stocks(date_str, data, psr_threshold=0.8, debt_threshold=100.0, conse
 
 def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_threshold=100.0, 
                  consecutive_profitable_quarters=3, portfolio_size=10, rebalance_freq="Q", initial_capital=100000000,
-                 min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0, sort_by="psr"):
+                 min_marcap=0, max_marcap=float('inf'), min_div_yield=1.0, sort_by="psr", target_market="Both"):
     """
     Simulates a quantitative investment strategy backtest.
     - rebalance_freq: "Q" (Quarterly), "M" (Monthly), "H" (Semi-Annually), "Y" (Annually)
     - min_marcap, max_marcap: Market cap threshold range in KRW
     - min_div_yield: Minimum dividend yield (%)
     - sort_by: "psr" (PSR Ascending), "marcap_asc" (Small-Cap Ascending), "marcap_desc" (Large-Cap Descending), "div_desc" (Dividend yield Descending)
+    - target_market: "Both", "KOSPI", or "KOSDAQ"
     """
     prices = data["prices"]
-    df_index = data["index"]
+    
+    # Choose benchmark index based on target market
+    if target_market == "KOSDAQ":
+        df_index = data["kosdaq_index"]
+    else:
+        df_index = data["kospi_index"]
     
     # Retrieve list of actual business trading days within backtest period
-    # Use KOSDAQ index dates as target days
+    # Use index dates as target days
     all_dates = df_index.loc[start_date_str:end_date_str].index.strftime("%Y-%m-%d").tolist()
     
     if not all_dates:
@@ -299,7 +312,8 @@ def run_backtest(data, start_date_str, end_date_str, psr_threshold=0.8, debt_thr
                 consecutive_profitable_quarters=consecutive_profitable_quarters,
                 min_marcap=min_marcap,
                 max_marcap=max_marcap,
-                min_div_yield=min_div_yield
+                min_div_yield=min_div_yield,
+                target_market=target_market
             )
             
             # Only rebalance if at least one stock satisfies the criteria.
@@ -478,7 +492,7 @@ if __name__ == "__main__":
     else:
         print("No cache data found. Please run data_collector.py first.")
 
-def get_available_backtest_range(data):
+def get_available_backtest_range(data, target_market="Both"):
     """
     Analyzes cached financial data to calculate the safe start and end dates for the backtest.
     """
@@ -513,7 +527,12 @@ def get_available_backtest_range(data):
     else:
         safe_start_date = datetime(year + 1, 4, 1)
         
-    index_dates = data["index"].index
+    # Choose benchmark index based on target market
+    if target_market == "KOSDAQ":
+        index_dates = data["kosdaq_index"].index
+    else:
+        index_dates = data["kospi_index"].index
+        
     latest_date = index_dates[-1].to_pydatetime()
     
     return safe_start_date, latest_date

@@ -73,9 +73,9 @@ st.markdown("""
 # Main Title Header
 st.markdown("""
 <div class="main-header">
-    <h1 style="margin:0; font-size:2.2rem; font-weight:700;">KOSDAQ Quant Backtester & Screener</h1>
+    <h1 style="margin:0; font-size:2.2rem; font-weight:700;">KRX (KOSPI & KOSDAQ) Quant Backtester & Screener</h1>
     <p style="margin:5px 0 0 0; opacity:0.85; font-size:1.0rem;">
-        Simulate historical performance and screen KOSDAQ equities using custom financial parameters
+        Simulate historical performance and screen KOSPI & KOSDAQ equities using custom financial parameters
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -85,6 +85,13 @@ cached_data = data_collector.load_cached_data()
 
 # ----------------- SIDEBAR PARAMETERS -----------------
 st.sidebar.header("⚙️ Strategy & Backtest Settings")
+
+# Target Market Selectbox
+target_market = st.sidebar.selectbox(
+    "Target Market",
+    options=["Both", "KOSPI", "KOSDAQ"],
+    help="Select the target market for stock screening and backtesting. The benchmark index will adjust accordingly."
+)
 
 # 1. Strategy Parameters
 st.sidebar.subheader("🎯 Screening Filter Criteria")
@@ -163,7 +170,7 @@ initial_capital = st.sidebar.number_input(
 
 # Default Backtest Dates (within 2 years roughly)
 if cached_data is not None:
-    safe_start, latest_end = backtester.get_available_backtest_range(cached_data)
+    safe_start, latest_end = backtester.get_available_backtest_range(cached_data, target_market)
     if safe_start is None:
         safe_start = datetime(2024, 5, 31)
         latest_end = datetime(2026, 6, 23)
@@ -226,11 +233,11 @@ if cached_data is None:
 else:
     # ----------------- TAB 1: SCREENER -----------------
     with tab1:
-        st.subheader("🔍 KOSDAQ Screened Stock Candidates")
+        st.subheader(f"🔍 {target_market} Screened Stock Candidates")
         st.write("Filtered companies based on the criteria configured in the sidebar (evaluated using the most recent public quarterly financial statements).")
         
         # Today or latest business day available in prices
-        latest_date_str = cached_data["index"].index[-1].strftime("%Y-%m-%d")
+        latest_date_str = cached_data["kospi_index"].index[-1].strftime("%Y-%m-%d")
         
         # Run Screening
         df_screened = backtester.screen_stocks(
@@ -240,7 +247,8 @@ else:
             consecutive_profitable_quarters=consecutive_profitable_quarters,
             min_marcap=min_marcap_won,
             max_marcap=max_marcap_won,
-            min_div_yield=min_div_input
+            min_div_yield=min_div_input,
+            target_market=target_market
         )
         
         # User dynamic sorting for display
@@ -377,7 +385,8 @@ else:
                     min_marcap=min_marcap_won,
                     max_marcap=max_marcap_won,
                     min_div_yield=min_div_input,
-                    sort_by=sort_by_input
+                    sort_by=sort_by_input,
+                    target_market=target_market
                 )
                 
                 if result is None:
@@ -433,6 +442,8 @@ else:
                     # 2. Cumulative Return Chart (Interactive Plotly)
                     st.subheader("📈 Cumulative Return Performance Comparison")
                     
+                    bench_name = "KOSDAQ Index (Benchmark)" if target_market == "KOSDAQ" else "KOSPI Index (Benchmark)"
+                    
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(
                         x=df_hist.index,
@@ -445,12 +456,12 @@ else:
                         x=df_hist.index,
                         y=df_hist["index_return"],
                         mode='lines',
-                        name='KOSDAQ Index (Benchmark)',
+                        name=bench_name,
                         line=dict(color='#ff7f0e', width=1.5, dash='dash')
                     ))
                     
                     fig.update_layout(
-                        title="Portfolio vs KOSDAQ Index Cumulative Return (%)",
+                        title=f"Portfolio vs {bench_name} Cumulative Return (%)",
                         xaxis_title="Date",
                         yaxis_title="Return (%)",
                         hovermode="x unified",
@@ -511,12 +522,14 @@ else:
 # ----------------- TAB 3: DATA MANAGEMENT -----------------
 with tab3:
     st.subheader("⚙️ Local Financial Database Management")
-    st.write("Download KOSDAQ equity listings, daily stock price history, and quarterly financial reports from Naver Finance to save locally.")
+    st.write("Download KOSPI and KOSDAQ listings, daily stock price history, and quarterly financial reports to save locally.")
     
     # Metadata status card
-    listing_path = os.path.join(data_collector.DATA_DIR, "kosdaq_listing.csv")
-    financials_path = os.path.join(data_collector.DATA_DIR, "kosdaq_financials.json")
-    prices_path = os.path.join(data_collector.DATA_DIR, "kosdaq_prices.json")
+    listing_path = os.path.join(data_collector.DATA_DIR, "krx_listing.csv")
+    financials_path = os.path.join(data_collector.DATA_DIR, "krx_financials.json")
+    prices_path = os.path.join(data_collector.DATA_DIR, "krx_prices.json")
+    kospi_idx_path = os.path.join(data_collector.DATA_DIR, "kospi_index.csv")
+    kosdaq_idx_path = os.path.join(data_collector.DATA_DIR, "kosdaq_index.csv")
     
     col1, col2, col3 = st.columns(3)
     
@@ -524,9 +537,9 @@ with tab3:
         if os.path.exists(listing_path):
             size = os.path.getsize(listing_path) / 1024
             mtime = datetime.fromtimestamp(os.path.getmtime(listing_path)).strftime('%Y-%m-%d %H:%M:%S')
-            st.success(f"Stock Tickers listing: Active\n- Size: {size:.1f} KB\n- Last Modified: {mtime}")
+            st.success(f"KRX Tickers Listing: Active\n- Size: {size:.1f} KB\n- Last Modified: {mtime}")
         else:
-            st.error("Stock Tickers listing: Missing")
+            st.error("KRX Tickers Listing: Missing")
             
     with col2:
         if os.path.exists(financials_path):
@@ -544,16 +557,32 @@ with tab3:
         else:
             st.error("Daily Prices Cache: Missing")
             
+    # Indexes status block
+    st.write("**Benchmark Indexes status:**")
+    idx_col1, idx_col2 = st.columns(2)
+    with idx_col1:
+        if os.path.exists(kospi_idx_path):
+            mtime = datetime.fromtimestamp(os.path.getmtime(kospi_idx_path)).strftime('%Y-%m-%d %H:%M:%S')
+            st.success(f"KOSPI Index: Active ({mtime})")
+        else:
+            st.error("KOSPI Index: Missing")
+    with idx_col2:
+        if os.path.exists(kosdaq_idx_path):
+            mtime = datetime.fromtimestamp(os.path.getmtime(kosdaq_idx_path)).strftime('%Y-%m-%d %H:%M:%S')
+            st.success(f"KOSDAQ Index: Active ({mtime})")
+        else:
+            st.error("KOSDAQ Index: Missing")
+            
     st.markdown("---")
     st.subheader("🔄 Update/Rebuild Local Database")
     st.markdown("""
     > [!IMPORTANT]
     > **Information on Crawling Time**:
-    > Rebuilding the cache requests daily prices (last 2 years) and financial histories (revenue, operating profits, debt ratio, dividend yield) for 900+ KOSDAQ tickers.
-    > The process runs in parallel (30-40 threads) and takes about **1-2 minutes** to complete. Once saved, subsequent dashboard loads are sub-second.
+    > Rebuilding the cache requests daily prices (last 2 years) and financial histories (revenue, operating profits, debt ratio, dividend yield) for 2,500+ KRX (KOSPI & KOSDAQ) tickers.
+    > The process runs in parallel (30-40 threads) and takes about **2-4 minutes** to complete. Once saved, subsequent dashboard loads are sub-second.
     """)
     
-    if st.button("🔄 Start Download/Update of all KOSDAQ stock data", type="primary"):
+    if st.button("🔄 Start Download/Update of all Korean stock data (KOSPI & KOSDAQ)", type="primary"):
         # UI controls for updating
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -587,7 +616,7 @@ with tab3:
             st.info("💡 Enter your Gemini API Key in the sidebar to enable the AI Stock Assistant.")
         else:
             # 1. Run screening for the latest date to get the candidates
-            latest_date_str = cached_data["index"].index[-1].strftime("%Y-%m-%d")
+            latest_date_str = cached_data["kospi_index"].index[-1].strftime("%Y-%m-%d")
             df_candidates = backtester.screen_stocks(
                 latest_date_str, cached_data,
                 psr_threshold=psr_threshold,
@@ -595,7 +624,8 @@ with tab3:
                 consecutive_profitable_quarters=consecutive_profitable_quarters,
                 min_marcap=min_marcap_won,
                 max_marcap=max_marcap_won,
-                min_div_yield=min_div_input
+                min_div_yield=min_div_input,
+                target_market=target_market
             )
             
             if df_candidates.empty:
