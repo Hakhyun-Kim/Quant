@@ -19,7 +19,11 @@ The application resides in the workspace root: `c:\work\github\Quant` and consis
    - Computes core portfolio statistics: Cumulative Return, CAGR, MDD, and Sharpe Ratio.
 4. **[app.py](file:///c:/work/github/Quant/app.py)**:
    - Provides a highly aesthetic web dashboard featuring vibrant gradient headers and a sleek, modern UI.
-   - Integrates tabs for **Real-time Screener** (real-time candidates and basket suggestions), **Backtest Performance** (interactive configurations, Plotly line charts, trade logs), and **Local Database Cache** (data update trigger with live progress indicator).
+   - Integrates tabs for **Real-time Screener** (real-time candidates and basket suggestions), **Backtest Performance** (interactive configurations, Plotly line charts, trade logs, and **AI Strategy Evaluation Reports**), **Local Database Cache** (data update trigger with live progress indicator), and **AI Stock Assistant** (interactive stock analysis chat).
+5. **[ai_evaluator.py](file:///c:/work/github/Quant/ai_evaluator.py)**:
+   - A dedicated module interfacing with Gemini API using the unified `google-genai` SDK.
+   - Includes prompt templates for backtest strategy summaries and system instruction constraints that keep analysis neutral and regulatory-compliant.
+   - Incorporates a real-time Naver News headline crawler to feed qualitative context (such as owner risks and news topics) into user-initiated stock queries.
 
 ---
 
