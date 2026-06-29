@@ -656,6 +656,8 @@ with tab3:
                     st.session_state["news_headlines"] = []
                     if "chat_history" in st.session_state:
                         del st.session_state["chat_history"]
+                    if "agent_logs" in st.session_state:
+                        del st.session_state["agent_logs"]
                         
                 if st.button("📰 Retrieve Recent News", key="btn_retrieve_news"):
                     with st.spinner("Crawling Naver News search for recent headlines..."):
@@ -679,9 +681,9 @@ with tab3:
                 q_col1, q_col2 = st.columns(2)
                 quick_query = ""
                 if q_col1.button("이 기업 지금 사면 어떤지? (Evaluation)", key="btn_q1", use_container_width=True):
-                    quick_query = "이 기업 지금 사면 어떤지? 재무와 밸류에이션 관점에서 핵심 리스크와 장점을 요약해줘."
+                    quick_query = f"{selected_stock_name} 지금 사면 어떤지? 재무와 밸류에이션 관점에서 핵심 리스크와 장점을 요약해줘."
                 if q_col2.button("뉴스 이슈 및 오너 리스크 체크 (News & Owner Risk)", key="btn_q2", use_container_width=True):
-                    quick_query = "뉴스 제목에 나온 주요 키워드와 오너 리스크, 혹은 최근 부정적인 핫이슈가 존재하는지 체크해줘."
+                    quick_query = f"{selected_stock_name} 뉴스 제목에 나온 주요 키워드와 오너 리스크, 혹은 최근 부정적인 핫이슈가 존재하는지 체크해줘."
                     
                 user_query = st.text_input("Your Question", value=quick_query, placeholder="e.g., 이 기업 부채상황과 성장성은 괜찮은가요?")
                 
@@ -689,29 +691,25 @@ with tab3:
                     if not user_query:
                         st.warning("Please enter a question or click a quick question button.")
                     else:
-                        with st.spinner("AI is analyzing financials and news to answer your query..."):
+                        with st.spinner("AI Agent is parsing query, analyzing financials, and crawling news..."):
                             try:
                                 import ai_evaluator
-                                # Compile financials context
-                                financials = {
-                                    "psr": stock_row['psr'],
-                                    "debt_ratio": stock_row['debt_ratio'],
-                                    "div_yield": stock_row['div_yield'],
-                                    "consecutive_profitable_quarters": consecutive_profitable_quarters
-                                }
-                                
-                                # If news is empty, try crawling it on the fly
-                                if not news_list:
-                                    news_list = ai_evaluator.crawl_news_headlines(selected_stock_name)
-                                    st.session_state["news_headlines"] = news_list
-                                    
-                                response_text = ai_evaluator.answer_stock_query(
-                                    selected_stock_name, stock_code, financials, news_list, user_query, api_key
+                                response_text, logs = ai_evaluator.run_financial_agent(
+                                    user_query=user_query,
+                                    api_key=api_key,
+                                    cached_data=cached_data
                                 )
                                 st.session_state["chat_history"] = response_text
+                                st.session_state["agent_logs"] = logs
                             except Exception as e:
-                                st.error(f"Failed to get AI answer: {e}")
+                                st.error(f"Failed to get AI Agent answer: {e}")
                                 
                 if "chat_history" in st.session_state:
-                    st.markdown("### 🤖 AI Response:")
+                    agent_logs = st.session_state.get("agent_logs", [])
+                    if agent_logs:
+                        with st.expander("🧠 Agent Thought & Execution Logs", expanded=True):
+                            for log in agent_logs:
+                                st.markdown(log)
+                                
+                    st.markdown("### 🤖 AI Agent Response:")
                     st.markdown(st.session_state["chat_history"])

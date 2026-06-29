@@ -149,3 +149,100 @@ def answer_stock_query(stock_name, stock_code, financials, news_headlines, query
         raise Exception(f"Gemini API Error: {ae.message} (Status: {ae.code})")
     except Exception as e:
         raise Exception(f"Error during query response: {e}")
+
+
+def run_financial_agent(user_query: str, api_key: str, cached_data: dict) -> tuple[str, list[str]]:
+    """
+    Runs an autonomous Financial Agent using Gemini 2.5 Flash native function calling.
+    The agent dynamically decides when to fetch local financials or crawl Naver news.
+    Returns: (agent_response_text, agent_execution_logs)
+    """
+    agent_logs = []
+    
+    # 1. Define tool functions that capture cached_data and write to agent_logs
+    def get_stock_financial_snapshot(stock_name: str) -> str:
+        """
+        Retrieve quantitative financial snapshot metrics (PSR, Debt Ratio, Dividend Yield, Market Cap) 
+        for a given Korean stock company name from the local cached database.
+        """
+        agent_logs.append(f"🔧 [Tool Call] Querying local financials database for '{stock_name}'...")
+        try:
+            listing = cached_data["listing"]
+            # Look up stock_name in cached_data["listing"]
+            row = listing[listing['name'] == stock_name]
+            if row.empty:
+                # Try case-insensitive substring match
+                row = listing[listing['name'].str.contains(stock_name, case=False, na=False)]
+            if row.empty:
+                return f"Stock '{stock_name}' was not found in the local cached database."
+                
+            row = row.iloc[0]
+            code = row['code']
+            
+            # Get financials
+            fin_dict = cached_data["financials"].get(code, {})
+            
+            return f"""
+            Financial snapshot for {row['name']} ({code}):
+            - PSR: {row.get('psr', 'N/A')}
+            - Debt Ratio: {row.get('debt_ratio', 'N/A')}%
+            - Dividend Yield: {row.get('div_yield', 'N/A')}%
+            - Market Cap: {row.get('marcap', 0) / 100000000:.1f}B KRW
+            - Market Board: {row.get('market', 'N/A')}
+            - Financial Statements Data: {f"Available ({len(fin_dict.get('dates', []))} quarters cached)" if fin_dict else "Not Cached"}
+            """
+        except Exception as e:
+            return f"Error querying local financial database: {e}"
+
+    def get_recent_news_headlines(stock_name: str) -> str:
+        """
+        Crawl and retrieve the top 5 recent Naver News search headlines for a given stock company name.
+        """
+        agent_logs.append(f"🔧 [Tool Call] Crawling Naver News search results for '{stock_name}'...")
+        try:
+            headlines = crawl_news_headlines(stock_name)
+            if not headlines:
+                return f"No recent headlines found for '{stock_name}'."
+            return f"Recent news headlines for {stock_name}:\n" + "\n".join([f"- {h}" for h in headlines])
+        except Exception as e:
+            return f"Error crawling news headlines: {e}"
+            
+    # 2. Build Gemini Client & configure chat with tools
+    try:
+        client = genai.Client(api_key=api_key)
+        
+        system_instruction = (
+            "You are an autonomous financial research agent. Your purpose is to answer "
+            "questions about Korean equities by using the tools provided to fetch facts.\n"
+            "Guidelines:\n"
+            "- Always use get_stock_financial_snapshot to query quantitative metrics if the query relates to financials, safety, or valuation.\n"
+            "- Always use get_recent_news_headlines to get the latest news context if the query asks about current issues, news, risks, or buy timing.\n"
+            "- If you need both news and financials to answer a query, make multiple tool calls in sequence.\n"
+            "- Maintain an objective, analytical tone. Do NOT provide direct buy/sell recommendations or predictions.\n"
+            "- Response Language: Respond in the same language as the user's query (e.g. Korean for Korean questions, English for English)."
+        )
+        
+        # We start a chat session with auto-function calling enabled by passing python functions directly to config.tools
+        chat = client.chats.create(
+            model='gemini-2.5-flash',
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                tools=[get_stock_financial_snapshot, get_recent_news_headlines],
+                temperature=0.3,
+            )
+        )
+        
+        agent_logs.append("🧠 [Agent State] Initializing agent session and parsing query...")
+        response = chat.send_message(user_query)
+        
+        if not agent_logs or len(agent_logs) == 1:
+            agent_logs.append("ℹ️ [Agent State] Answered directly without invoking additional tools.")
+        else:
+            agent_logs.append("🎉 [Agent State] Successfully synthesized tools outputs and completed analysis.")
+            
+        return response.text, agent_logs
+        
+    except APIError as ae:
+        raise Exception(f"Gemini API Error: {ae.message} (Status: {ae.code})")
+    except Exception as e:
+        raise Exception(f"Error during agent execution: {e}")
