@@ -23,7 +23,8 @@ The application resides in the workspace root: `c:\work\github\Quant` and consis
 5. **[ai_evaluator.py](file:///c:/work/github/Quant/ai_evaluator.py)**:
    - A dedicated module interfacing with Gemini API using the unified `google-genai` SDK.
    - Includes prompt templates for backtest strategy summaries and system instruction constraints that keep analysis neutral and regulatory-compliant.
-   - Incorporates a real-time Naver News headline crawler to feed qualitative context (such as owner risks and news topics) into user-initiated stock queries.
+   - Implements an autonomous **Financial Agent** using native function calling (Tool Calling) to dynamically retrieve stock metrics or search real-time news headlines based on user queries.
+   - Records and returns interactive agent thought and execution logs (e.g. tool execution events) directly to the Streamlit UI console.
 
 ---
 
